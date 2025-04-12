@@ -7,6 +7,7 @@ import { useChordStore } from "@/stores/chord-store";
 import { Eye } from "lucide-react-native";
 import { usePathname } from "expo-router";
 import { NavigationMenu } from "@/components/NavigationMenu";
+import { exportProgressionToMidi, downloadMidiFile } from '@/utils/midi-utils';
 
 export default function UtilityScreen() {
   const {
@@ -14,6 +15,7 @@ export default function UtilityScreen() {
     createNewSong,
     saveSong,
     loadSong,
+    currentProgression,
   } = useChordStore();
   
   const [menuVisible, setMenuVisible] = useState(false);
@@ -58,6 +60,13 @@ export default function UtilityScreen() {
     }
   };
 
+  const handleExportMidi = () => {
+    if (!currentProgression) return;
+    
+    const midiBlob = exportProgressionToMidi(currentProgression);
+    downloadMidiFile(midiBlob, `${currentProgression.name}.mid`);
+  };
+
   // Toggle navigation menu
   const toggleMenu = () => {
     setMenuVisible(!menuVisible);
@@ -92,6 +101,15 @@ export default function UtilityScreen() {
           onExportSong={handleExportSong}
           onImportMidi={handleImportMidi}
         />
+        <Pressable 
+          style={styles.button}
+          onPress={handleExportMidi}
+          disabled={!currentProgression}
+        >
+          <Text style={styles.buttonText}>
+            {currentProgression ? 'Export Current Progression as MIDI' : 'No Progression to Export'}
+          </Text>
+        </Pressable>
       </View>
     </SafeAreaView>
   );
@@ -130,5 +148,16 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 16,
+  },
+  button: {
+    backgroundColor: colors.primary,
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  buttonText: {
+    color: colors.text,
+    fontSize: 16,
+    textAlign: 'center',
   },
 });

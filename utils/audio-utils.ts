@@ -2,6 +2,7 @@
 import { Platform } from 'react-native';
 import { FlamValue, InstrumentType } from '../types/music';
 import { Audio, AVPlaybackStatus } from 'expo-av';
+import * as Tone from 'tone';
 
 // Web Audio API context and oscillators
 let audioContext: AudioContext | null = null;
@@ -13,10 +14,13 @@ let soundObjects: { [key: number]: Audio.Sound } = {};
 let isAudioInitialized = false;
 
 // Current instrument type
-let currentInstrument: InstrumentType = 'piano';
+let currentInstrument: InstrumentType = 'balafon';
 
 // Current flam value (for chord arpeggiation)
 let currentFlamValue: FlamValue = '1/16';
+
+// Current BPM for flam synchronization
+let currentBpm: number = 120;
 
 // Debug flag - set to true to see detailed logs
 const DEBUG_AUDIO = true;
@@ -30,54 +34,52 @@ const logDebug = (...args: any[]) => {
 
 // Initialize audio
 export const initAudio = async () => {
-  if (Platform.OS === 'web' && !audioContext) {
+  if (Platform.OS === 'web') {
     try {
-      audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      logDebug('Web Audio API initialized');
+      // Create audio context if it doesn't exist
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        logDebug('Web Audio API initialized');
+      }
+
+      // Resume audio context if it's suspended (browsers require user interaction)
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+        logDebug('Audio context resumed');
+      }
+      
+      // Initialize Tone.js
+      if (Tone.context.state !== 'running') {
+        await Tone.start();
+        await Tone.context.resume();
+        logDebug('Tone.js initialized and resumed');
+      }
+
+      // Sync Tone.js with our audio context
+      Tone.setContext(audioContext);
     } catch (e) {
-      console.error('Web Audio API is not supported in this browser', e);
+      console.error('Error initializing audio:', e);
+      throw e;
     }
-  } else if (Platform.OS !== 'web' && !isAudioInitialized) {
+  } else if (!isAudioInitialized) {
     try {
       logDebug('Initializing Expo Audio...');
       
-      // Initialize Expo Audio with settings optimized for iOS
       await Audio.setAudioModeAsync({
         playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
+        staysActiveInBackground: true,
         shouldDuckAndroid: true,
-        // Use number values instead of enums for compatibility
-        interruptionModeIOS: 1, // 1 represents DO_NOT_MIX
-        interruptionModeAndroid: 1, // 1 represents DO_NOT_MIX
+        interruptionModeIOS: 1,
+        interruptionModeAndroid: 1,
         playThroughEarpieceAndroid: false,
         allowsRecordingIOS: false,
       });
       
       isAudioInitialized = true;
       logDebug('Expo Audio initialized successfully');
-      
-      // Initialize without requiring a test sound
-      try {
-        // Create a silent audio buffer instead of loading a file
-        const dummySound = new Audio.Sound();
-        await dummySound.loadAsync({ uri: '' }, { volume: 0 });
-        
-        logDebug('Audio system initialized without test sound');
-        
-        // Clean up the dummy sound
-        setTimeout(async () => {
-          try {
-            await dummySound.unloadAsync();
-          } catch (cleanupError) {
-            console.error('Error cleaning up dummy sound:', cleanupError);
-          }
-        }, 100);
-      } catch (e) {
-        console.error('Failed to initialize audio system:', e);
-        // Even if this fails, we'll still mark as initialized
-      }
     } catch (e) {
       console.error('Failed to initialize Expo Audio:', e);
+      throw e;
     }
   }
 };
@@ -116,7 +118,7 @@ export const playChord = async (midiNotes: number[]) => {
     }
   } else {
     // Play notes with a slight delay between them (arpeggio effect)
-    const flamDelay = getFlamDelayMs();
+    const flamDelay = getFlamDelayMs(currentFlamValue);
     for (let i = 0; i < midiNotes.length; i++) {
       setTimeout(() => {
         playNote(midiNotes[i]);
@@ -165,17 +167,27 @@ export const getFlamValue = () => {
   return currentFlamValue;
 };
 
-// Get flam delay in milliseconds
-const getFlamDelayMs = (): number => {
-  switch (currentFlamValue) {
-    case '1/4': return 250;
-    case '1/8': return 125;
-    case '1/16': return 62.5;
-    case '1/32': return 31.25;
-    case 'off': return 0;
-    default: return 62.5; // Default to 1/16
-  }
+// Set the current BPM
+export const setBpm = (bpm: number) => {
+  currentBpm = bpm;
 };
+
+// Get the current BPM
+export const getBpm = () => {
+  return currentBpm;
+};
+
+// Get flam delay in milliseconds based on BPM
+export function getFlamDelayMs(flam: string): number {
+  const msPerBeat = (60 / currentBpm) * 1000;
+  switch (flam) {
+    case '1/32': return msPerBeat / 32; // Small flam: 1/32 of a beat
+    case '1/16': return msPerBeat / 16; // Medium flam: 1/16 of a beat
+    case '1/8': return msPerBeat / 8;   // Large flam: 1/8 of a beat
+    case '1/4': return msPerBeat / 4;   // Extra large flam: 1/4 of a beat
+    default: return 0;
+  }
+}
 
 // Play a progression of chords
 export const playProgression = async (

@@ -19,6 +19,8 @@ export const colors = {
   
   // Button colors
   buttonGrey: '#2C2C2C', // Gray button background
+  buttonPressed: '#1A1A1A', // Darker gray for pressed state
+  buttonActive: '#3C3C3C', // Lighter gray for active state
   
   // Piano colors
   piano: {

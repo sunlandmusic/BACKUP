@@ -5,7 +5,7 @@ import { colors } from "@/constants/colors";
 import { useChordStore } from "@/stores/chord-store";
 import { Chord, ChordType, NoteName, noteNames } from "@/types/music";
 import { playChord, stopChord, initAudio } from "@/utils/audio-utils";
-import { createChord, getScaleNotes } from "@/utils/chord-utils";
+import { createChord, getScaleNotes, getMidiNote } from "@/utils/chord-utils";
 import { Eye, Play } from "lucide-react-native";
 import { HorizontalPiano } from "@/components/HorizontalPiano";
 import { SavedChordButton } from "@/components/SavedChordButton";
@@ -113,6 +113,24 @@ export default function ChordComposeScreen() {
       
       // Create the chord with the primary type
       const chord = createChord(noteName, selectedChordType, 4 + octave, bassNote);
+      
+      // Apply inversion if selected
+      if (inversion !== 0 && chord.notes.length >= 3) {
+        const notes = [...chord.notes];
+        if (inversion < 0) {
+          // Move notes down an octave for negative inversions
+          for (let i = notes.length - 1; i >= notes.length - Math.abs(inversion); i--) {
+            notes[i] -= 12; // Move down an octave
+          }
+        } else {
+          // Move notes up an octave for positive inversions
+          for (let i = 0; i < inversion; i++) {
+            notes[i] += 12; // Move up an octave
+          }
+        }
+        chord.notes = notes;
+      }
+      
       setCurrentChord(chord);
       setLastPlayedChord(chord); // Store as last played chord
       playChord(chord.notes);
@@ -204,11 +222,19 @@ export default function ChordComposeScreen() {
         break;
         
       case 'inversion':
+        let newInversion;
         if (direction === 'up') {
-          setInversion(prev => prev < 3 ? prev + 1 : prev);
+          newInversion = inversion === -2 ? -1 :
+                         inversion === -1 ? 0 :
+                         inversion === 0 ? 1 :
+                         inversion === 1 ? 2 : inversion;
         } else {
-          setInversion(prev => prev > -3 ? prev - 1 : prev);
+          newInversion = inversion === 2 ? 1 :
+                         inversion === 1 ? 0 :
+                         inversion === 0 ? -1 :
+                         inversion === -1 ? -2 : inversion;
         }
+        setInversion(newInversion);
         break;
         
       case 'voicing':
@@ -523,7 +549,15 @@ export default function ChordComposeScreen() {
           {/* Navigation arrows and saved chord buttons */}
           <View style={styles.savedChordsContainer}>
             <View style={styles.savedChordsRow}>
-              {/* Left arrow button - moved 5px to the right */}
+              {/* Save button */}
+              <Pressable 
+                style={[styles.saveButton, saveMode && styles.saveButtonActive]}
+                onPress={toggleSaveMode}
+              >
+                <Text style={styles.saveButtonText}>S</Text>
+              </Pressable>
+
+              {/* Left arrow button */}
               <Pressable 
                 style={styles.savedChordNavButton}
                 onPress={() => handleSavedChordPageChange('prev')}
@@ -533,21 +567,13 @@ export default function ChordComposeScreen() {
                   <Play 
                     size={16} 
                     color={savedChordPage === 0 ? colors.textMuted : colors.textOffWhite} 
-                    style={styles.prevArrow}
+                    style={{ transform: [{ rotate: '180deg' }] }}
                     fill={savedChordPage === 0 ? colors.textMuted : colors.textOffWhite}
                   />
                 </View>
               </Pressable>
               
-              {/* Save button */}
-              <Pressable 
-                style={[styles.saveButton, saveMode && styles.saveButtonActive]}
-                onPress={toggleSaveMode}
-              >
-                <Text style={styles.saveButtonText}>S</Text>
-              </Pressable>
-              
-              {/* Saved chord buttons - moved 5px to the left */}
+              {/* Saved chord buttons */}
               <View style={styles.savedChordButtonsContainer}>
                 {Array.from({ length: 8 }).map((_, index) => {
                   const chordIndex = savedChordPage * savedChordsPerPage + index;
@@ -570,8 +596,8 @@ export default function ChordComposeScreen() {
                   );
                 })}
               </View>
-              
-              {/* Right arrow button - moved 8px more to the right (318px total) */}
+
+              {/* Right arrow button */}
               <Pressable 
                 style={styles.savedChordNavButtonRight}
                 onPress={() => handleSavedChordPageChange('next')}
@@ -646,10 +672,11 @@ const styles = StyleSheet.create({
   },
   // Chord Types Section - at left
   chordTypesSection: {
-    width: 340, // Width to accommodate larger buttons
+    width: 340,
     height: '100%',
     padding: 4,
-    marginLeft: 0, // Removed margin since we're centering the entire content
+    marginLeft: -16, // Changed from -7 to -16 to move chord grid left by 9 pixels
+    position: 'relative', // Added to ensure independent positioning
   },
   chordTypeGrid: {
     width: '100%',
@@ -684,9 +711,9 @@ const styles = StyleSheet.create({
   },
   // Piano section - at right of chord types
   pianoSection: {
-    flex: 1, // Use flex to fill available space
-    marginLeft: -6, // Changed from 5px to -6px to move piano section left by 11px
-    marginRight: 5, // Changed from 45px to 5px as requested
+    flex: 1,
+    marginLeft: 5, // Reset to original position
+    marginRight: 5,
   },
   // Settings panel above piano
   settingsPanel: {
@@ -744,55 +771,50 @@ const styles = StyleSheet.create({
   },
   // Saved chords section
   savedChordsContainer: {
-    marginLeft: -30, // Move saved chords section 30px to the left
-    marginRight: 5, // Changed from 45px to 5px to match piano section
+    width: '100%',
+    marginTop: 4,
+    position: 'relative',
+    marginLeft: -37, // Changed from -30 to -37 to move 7 pixels to the left
   },
   savedChordsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 5, // Add some padding to align with the rest of the UI
+    paddingLeft: 65, // Changed from 55 to 65 to move 10 pixels to the right
   },
   savedChordNavButton: {
-    width: 36, // Increased from 30 to 36
-    height: 36, // Increased from 30 to 36
+    width: 36,
+    height: 36,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: -45, // Moved right by 5px (from -50 to -45)
+    marginLeft: 0,
+    marginRight: 10,
   },
-  savedChordNavButtonRight: {
-    width: 36, // Increased from 30 to 36
-    height: 36, // Increased from 30 to 36
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 318, // Moved 8px more to the right (from 310 to 318)
-    marginRight: 5, // Add some space before the minus button
-  },
-  // Save button
   saveButton: {
-    width: 30, // Width 30px as requested
-    height: 48, // Height 48px as requested
-    backgroundColor: colors.buttonGrey, // Same color as empty saved chord buttons
+    width: 30,
+    height: 48,
+    backgroundColor: colors.buttonGrey,
     borderRadius: 4,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 10, // Add some space after the left arrow
-    marginRight: 10, // Add some space before the first chord button
+    marginLeft: -90,
+    marginRight: 0,
   },
   saveButtonActive: {
     borderWidth: 2,
     borderColor: colors.error,
   },
   saveButtonText: {
-    color: colors.error, // Red text as requested
-    fontSize: 14, // Increased font size for better visibility of single letter
+    color: '#8B0000',  // DarkRed - same as delete button
+    fontSize: 14,
     fontWeight: 'bold',
   },
   // Container for saved chord buttons to align them properly
   savedChordButtonsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    width: 335, // Reduced by 5px from 340px to move buttons left
-    marginLeft: -5, // Added to move buttons 5px to the left
+    width: 335,
+    marginLeft: -5,
+    gap: 8,
   },
   arrowCircle: {
     width: 32,
@@ -810,6 +832,7 @@ const styles = StyleSheet.create({
   },
   prevArrow: {
     transform: [{ rotate: '180deg' }],
+    marginLeft: -8,
   },
   // Plus/Minus buttons at right
   plusMinusContainer: {
@@ -845,5 +868,12 @@ const styles = StyleSheet.create({
     color: colors.textOffWhite, // Updated to off-white
     fontSize: 28, // Increased from 22 to 28 for better visibility
     fontWeight: 'bold',
+  },
+  savedChordNavButtonRight: {
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 270, // Changed from 170 to 270 to move 100 pixels to the right
   },
 });

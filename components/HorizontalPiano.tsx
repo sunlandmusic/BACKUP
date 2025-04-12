@@ -306,24 +306,26 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     position: 'relative',
+    backgroundColor: '#333333',
   },
   whiteKeysRow: {
     flexDirection: 'row',
-    width: '100%',
-    height: '100%',
     position: 'absolute',
-    bottom: 0,
+    zIndex: 1,
+    top: 100,
+    left: -10,
   },
   whiteKey: {
-    flex: 1,
+    width: 39,
+    height: 100,
+    borderRadius: 15,
     backgroundColor: '#FFFFFF',
-    borderRadius: 3,
     borderWidth: 1,
     borderColor: '#333333',
     justifyContent: 'flex-end',
     alignItems: 'center',
-    marginHorizontal: 1,
-    height: '100%',
+    marginHorizontal: 6,
+    position: 'relative',
   },
   whiteKeyPressed: {
     backgroundColor: '#E0E0E0',
@@ -335,7 +337,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.chord.user, // Changed to match USER button color (dark purple)
   },
   whiteKeyInScale: {
-    borderColor: colors.primary,
+    borderColor: '#000000',
     borderWidth: 2,
   },
   blackKeysRow: {
@@ -346,32 +348,34 @@ const styles = StyleSheet.create({
     height: '60%',
   },
   blackKey: {
+    width: 39,
+    height: 100,
+    borderRadius: 15,
     position: 'absolute',
-    backgroundColor: '#333333',
-    borderRadius: 3,
-    width: '8%',
-    height: '100%',
+    backgroundColor: '#000000',
     justifyContent: 'flex-end',
     alignItems: 'center',
     paddingBottom: 5,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
   },
   blackKeyPosition1: {
-    left: '10.5%', // C#
+    left: 15, // C#
   },
   blackKeyPosition2: {
-    left: '25%', // D#
+    left: 70, // D#
   },
   blackKeyPosition3: {
-    left: '53.5%', // F#
+    left: 180, // F#
   },
   blackKeyPosition4: {
-    left: '67.5%', // G#
+    left: 235, // G#
   },
   blackKeyPosition5: {
-    left: '82%', // A#
+    left: 290, // A#
   },
   blackKeyPressed: {
-    backgroundColor: '#1A1A1A',
+    backgroundColor: '#1D1D1D',
   },
   blackKeyHighlighted: {
     backgroundColor: colors.piano.highlight,

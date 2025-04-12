@@ -19,16 +19,12 @@ export const InstrumentSelector: React.FC<InstrumentSelectorProps> = ({
 }) => {
   // Define available instruments
   const instruments: { type: InstrumentType; label: string }[] = [
+    { type: 'balafon', label: 'Balafon' },
     { type: 'piano', label: 'Piano' },
-    { type: 'organ', label: 'Organ' },
     { type: 'synth', label: 'Synth' },
     { type: 'guitar', label: 'Guitar' },
-    { type: 'bass', label: 'Bass' },
     { type: 'strings', label: 'Strings' },
     { type: 'brass', label: 'Brass' },
-    { type: 'woodwind', label: 'Woodwind' },
-    { type: 'percussion', label: 'Percussion' },
-    { type: 'balafon', label: 'Balafon' },
   ];
 
   // Define flam values
@@ -43,11 +39,6 @@ export const InstrumentSelector: React.FC<InstrumentSelectorProps> = ({
   return (
     <View style={styles.container}>
       <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Music size={20} color={colors.text} />
-          <Text style={styles.sectionTitle}>Instrument</Text>
-        </View>
-        
         <View style={styles.instrumentGrid}>
           {instruments.map((instrument) => (
             <Pressable

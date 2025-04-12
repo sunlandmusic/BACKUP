@@ -142,10 +142,13 @@ const styles = StyleSheet.create({
   },
   grid: {
     width: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
   },
   row: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+    width: '100%',
+    gap: 8,
   },
 });

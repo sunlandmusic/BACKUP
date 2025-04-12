@@ -33,6 +33,7 @@ export interface Chord {
   type: ChordType;
   notes: number[]; // MIDI note numbers
   bassNote?: NoteName; // For slash chords (e.g., C/G)
+  duration?: number;
   inversion?: number; // 0 = root position, 1 = first inversion, etc.
   voicing?: number; // Different voicing options
 }
@@ -52,16 +53,12 @@ export type MusicMode =
 
 // Instrument types
 export type InstrumentType = 
+  | 'balafon'
   | 'piano' 
-  | 'organ' 
   | 'synth' 
   | 'guitar' 
-  | 'bass' 
   | 'strings' 
-  | 'brass' 
-  | 'woodwind' 
-  | 'percussion'
-  | 'balafon'; // Added balafon instrument
+  | 'brass';
 
 // Flam values (for chord arpeggiation)
 export type FlamValue = 'off' | '1/4' | '1/8' | '1/16' | '1/32';
@@ -82,6 +79,11 @@ export interface Section {
   name: string; // e.g., 'Verse', 'Chorus', etc.
   progressionId: string;
   repeat: number;
+  steps: Chord[]; // Array of chords in the section
+  settings: {
+    bpm: number;
+    bars: number;
+  };
 }
 
 // Chord progression
@@ -107,4 +109,12 @@ export interface Song {
   flamValue: FlamValue;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface Progression {
+  id: string;
+  name: string;
+  steps: Chord[];
+  bpm: number;
+  createdAt: Date;
 }

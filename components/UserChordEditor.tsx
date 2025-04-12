@@ -197,26 +197,9 @@ export const UserChordEditor: React.FC<UserChordEditorProps> = ({
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>User Chord Editor</Text>
-      
       <View style={styles.editorGrid}>
         {/* Key selector */}
         <View style={styles.controlGroup}>
-          <View style={styles.buttons}>
-            <Pressable 
-              style={styles.button} 
-              onPress={() => handleKeyChange('prev')}
-            >
-              <ChevronDown size={24} color={colors.text} />
-            </Pressable>
-            <Pressable 
-              style={styles.button} 
-              onPress={() => handleKeyChange('next')}
-            >
-              <ChevronUp size={24} color={colors.text} />
-            </Pressable>
-          </View>
-          
           <View style={styles.display}>
             <Text style={styles.displayLabel}>KEY</Text>
             <Text style={styles.displayValue}>{selectedKey}</Text>
@@ -225,25 +208,13 @@ export const UserChordEditor: React.FC<UserChordEditorProps> = ({
         
         {/* Chord type selector */}
         <View style={styles.controlGroup}>
-          <View style={styles.buttons}>
-            <Pressable 
-              style={styles.button} 
-              onPress={() => handleChordTypeChange('prev')}
-            >
-              <ChevronDown size={24} color={colors.text} />
-            </Pressable>
-            <Pressable 
-              style={styles.button} 
-              onPress={() => handleChordTypeChange('next')}
-            >
-              <ChevronUp size={24} color={colors.text} />
-            </Pressable>
-          </View>
-          
           <View style={styles.display}>
             <Text style={styles.displayLabel}>CHORD TYPE</Text>
             <Text style={styles.displayValue}>{chordTypeNames[chordTypeIndex]}</Text>
           </View>
+          <Pressable style={styles.saveButton} onPress={handleSave}>
+            <Text style={styles.saveButtonText}>S</Text>
+          </Pressable>
         </View>
         
         {/* Play button */}
@@ -251,67 +222,37 @@ export const UserChordEditor: React.FC<UserChordEditorProps> = ({
           <Pressable 
             style={[styles.playButton, isPlaying && styles.playButtonActive]} 
             onPressIn={handlePlay}
-            onPressOut={handlePlayRelease} // Stop sound when released
+            onPressOut={handlePlayRelease}
           >
             <Play size={48} color={colors.text} />
           </Pressable>
-          <Text style={styles.playLabel}>{isPlaying ? 'STOP' : 'PLAY'}</Text>
         </View>
         
         {/* Bass note selector */}
         <View style={styles.controlGroup}>
-          <View style={styles.buttons}>
-            <Pressable 
-              style={styles.button} 
-              onPress={() => handleBassOffsetChange('prev')}
-            >
-              <ChevronDown size={24} color={colors.text} />
-            </Pressable>
-            <Pressable 
-              style={styles.button} 
-              onPress={() => handleBassOffsetChange('next')}
-            >
-              <ChevronUp size={24} color={colors.text} />
-            </Pressable>
-          </View>
-          
           <View style={styles.display}>
             <Text style={styles.displayLabel}>BASS NOTE</Text>
             <Text style={styles.displayValue}>{formatBassOffset()}</Text>
           </View>
-        </View>
-        
-        {/* Modifier selector */}
-        <View style={styles.modifierContainer}>
-          <Text style={styles.modifierLabel}>Modifiers:</Text>
-          <View style={styles.modifierButtons}>
-            <Pressable
-              style={[
-                styles.modifierButton,
-                selectedModifier === 'sus2' && styles.selectedModifierButton,
-                { backgroundColor: colors.chord.sus2 }
-              ]}
-              onPress={() => handleModifierSelect('sus2')}
-            >
-              <Text style={styles.modifierButtonText}>sus2</Text>
-            </Pressable>
-            <Pressable
-              style={[
-                styles.modifierButton,
-                selectedModifier === 'sus4' && styles.selectedModifierButton,
-                { backgroundColor: colors.chord.sus4 }
-              ]}
-              onPress={() => handleModifierSelect('sus4')}
-            >
-              <Text style={styles.modifierButtonText}>sus4</Text>
-            </Pressable>
-          </View>
+          <View style={styles.emptySpace} />
         </View>
       </View>
       
-      <Pressable style={styles.saveButton} onPress={handleSave}>
-        <Text style={styles.saveButtonText}>S</Text>
-      </Pressable>
+      {/* Side buttons */}
+      <View style={styles.plusMinusContainer}>
+        <Pressable 
+          style={styles.plusButton}
+          onPress={() => handleKeyChange('next')}
+        >
+          <Text style={styles.plusMinusText}>+</Text>
+        </Pressable>
+        <Pressable 
+          style={styles.minusButton}
+          onPress={() => handleKeyChange('prev')}
+        >
+          <Text style={styles.plusMinusText}>-</Text>
+        </Pressable>
+      </View>
     </View>
   );
 };
@@ -323,13 +264,6 @@ const styles = StyleSheet.create({
     padding: 16,
     marginVertical: 8,
   },
-  title: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
   editorGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -337,26 +271,18 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   controlGroup: {
-    width: '48%',
+    width: '24%',
     marginBottom: 16,
-  },
-  buttons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  button: {
-    backgroundColor: colors.surfaceLight,
-    borderRadius: 8,
-    padding: 12,
-    width: '48%',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 120,
   },
   display: {
     backgroundColor: colors.surfaceLight,
     borderRadius: 8,
     padding: 12,
     alignItems: 'center',
+    width: '100%',
   },
   displayLabel: {
     color: colors.textSecondary,
@@ -381,55 +307,59 @@ const styles = StyleSheet.create({
     height: 80,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
   },
   playButtonActive: {
     backgroundColor: colors.error,
-  },
-  playLabel: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  modifierContainer: {
-    width: '100%',
-    marginBottom: 16,
-  },
-  modifierLabel: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    marginBottom: 8,
-  },
-  modifierButtons: {
-    flexDirection: 'row',
-    justifyContent: 'flex-start',
-  },
-  modifierButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    marginRight: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    minWidth: 80,
-  },
-  selectedModifierButton: {
-    borderWidth: 2,
-    borderColor: colors.text,
-  },
-  modifierButtonText: {
-    color: '#000000', // Black text for sus2/sus4
-    fontWeight: 'bold',
-    fontSize: 14,
   },
   saveButton: {
     backgroundColor: colors.primary,
     borderRadius: 8,
     padding: 16,
     alignItems: 'center',
+    width: '100%',
+    marginTop: 8,
   },
   saveButtonText: {
     color: colors.text,
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  plusMinusContainer: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderLeftWidth: 1,
+    borderLeftColor: colors.border,
+  },
+  minusButton: {
+    width: 40,
+    height: 140,
+    borderRadius: 8,
+    backgroundColor: colors.buttonGrey,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  plusButton: {
+    width: 40,
+    height: 140,
+    borderRadius: 8,
+    backgroundColor: colors.buttonGrey,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  plusMinusText: {
+    color: colors.textOffWhite,
+    fontSize: 28,
+    fontWeight: 'bold',
+  },
+  emptySpace: {
+    width: '100%',
+    height: 40,
   },
 });

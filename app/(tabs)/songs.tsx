@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { StyleSheet, Text, View, ScrollView, SafeAreaView, Pressable, Modal } from "react-native";
+import React, { useState, useEffect } from "react";
+import { StyleSheet, Text, View, ScrollView, SafeAreaView, Pressable, Modal, Alert, TextInput } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { colors } from "@/constants/colors";
 import { useChordStore } from "@/stores/chord-store";
@@ -7,10 +7,13 @@ import { SongCard } from "@/components/SongCard";
 import { ProgressionCard } from "@/components/ProgressionCard";
 import { SongStructureEditor } from "@/components/SongStructureEditor";
 import { Plus, X, Eye } from "lucide-react-native";
-import { usePathname } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import { NavigationMenu } from "@/components/NavigationMenu";
+import { Chord, Section } from '../../types/music';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function SongsScreen() {
+  const router = useRouter();
   const {
     savedSongs,
     savedProgressions,
@@ -23,6 +26,9 @@ export default function SongsScreen() {
     saveSong,
     deleteSong,
     loadSong,
+    savedSections,
+    currentKey,
+    currentMode,
   } = useChordStore();
 
   const [isCreating, setIsCreating] = useState(false);
@@ -30,9 +36,17 @@ export default function SongsScreen() {
   const [selectedProgressionId, setSelectedProgressionId] = useState<string | null>(null);
   const [sectionName, setSectionName] = useState("Section");
   const [menuVisible, setMenuVisible] = useState(false);
+  const [selectedType, setSelectedType] = useState<'progression'>('progression');
   
   // Get current route for navigation menu
   const pathname = usePathname();
+
+  // Automatically create a new song when the page loads
+  useEffect(() => {
+    if (!isCreating && !currentSong) {
+      handleCreateSong();
+    }
+  }, []);
 
   // Handle creating a new song
   const handleCreateSong = () => {
@@ -81,6 +95,18 @@ export default function SongsScreen() {
     setMenuVisible(!menuVisible);
   };
 
+  const renderSection = (section: Section, index: number) => {
+    // ... existing code ...
+  };
+
+  const renderStep = (step: Chord) => {
+    return (
+      <View style={styles.stepContainer}>
+        <Text style={styles.stepText}>{step.root}{step.type}</Text>
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
@@ -101,9 +127,8 @@ export default function SongsScreen() {
         <Text style={styles.headerTitle}>Songs</Text>
       </View>
       
-      {isCreating && currentSong ? (
-        // Song editor view
-        <View style={styles.editorContainer}>
+      <View style={styles.editorContainer}>
+        {currentSong ? (
           <SongStructureEditor
             song={currentSong}
             onUpdateSection={updateSectionInSong}
@@ -112,40 +137,8 @@ export default function SongsScreen() {
             onSave={handleSaveSong}
             onNameChange={handleSongNameChange}
           />
-        </View>
-      ) : (
-        // Songs list view
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          {/* Create new song button */}
-          <Pressable
-            style={styles.createButton}
-            onPress={handleCreateSong}
-          >
-            <Plus size={24} color={colors.text} />
-            <Text style={styles.createButtonText}>Create New Song</Text>
-          </Pressable>
-          
-          {/* Saved songs */}
-          <View style={styles.songsContainer}>
-            <Text style={styles.sectionTitle}>Your Songs</Text>
-            
-            {savedSongs.length > 0 ? (
-              savedSongs.map((song) => (
-                <SongCard
-                  key={song.id}
-                  song={song}
-                  onEdit={() => handleEditSong(song.id)}
-                  onDelete={deleteSong}
-                />
-              ))
-            ) : (
-              <Text style={styles.emptyText}>
-                You haven't created any songs yet. Tap the button above to get started!
-              </Text>
-            )}
-          </View>
-        </ScrollView>
-      )}
+        ) : null}
+      </View>
       
       {/* Progression selector modal */}
       <Modal
@@ -162,6 +155,17 @@ export default function SongsScreen() {
                 onPress={() => setShowProgressionSelector(false)}
               >
                 <X size={24} color={colors.text} />
+              </Pressable>
+            </View>
+
+            <View style={styles.typeSelector}>
+              <Pressable
+                style={[styles.typeButton, styles.selectedType]}
+                onPress={() => setSelectedType('progression')}
+              >
+                <Text style={[styles.typeText, styles.selectedTypeText]}>
+                  Progressions
+                </Text>
               </Pressable>
             </View>
             
@@ -286,5 +290,38 @@ const styles = StyleSheet.create({
   },
   progressionsList: {
     maxHeight: 500,
+  },
+  typeSelector: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginBottom: 16,
+    gap: 8,
+  },
+  typeButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 4,
+    backgroundColor: colors.surfaceLight,
+  },
+  selectedType: {
+    backgroundColor: colors.primary,
+  },
+  typeText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  selectedTypeText: {
+    color: colors.text,
+  },
+  stepContainer: {
+    padding: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 4,
+  },
+  stepText: {
+    color: colors.text,
+    fontSize: 14,
   },
 });

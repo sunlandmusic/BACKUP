@@ -22,6 +22,7 @@ interface ChordState {
   currentChord: Chord | null;
   currentProgression: ChordProgression | null;
   currentSong: Song | null;
+  isPlaying: boolean;
   
   // App settings
   currentKey: NoteName;
@@ -33,6 +34,7 @@ interface ChordState {
   savedChords: Chord[];
   savedProgressions: ChordProgression[];
   savedSongs: Song[];
+  savedSections: Section[];
   
   // User chord settings
   userChordType: number;
@@ -49,6 +51,7 @@ interface ChordState {
   // Actions - Sound settings
   setCurrentInstrument: (instrument: InstrumentType) => void;
   setCurrentFlamValue: (flamValue: FlamValue) => void;
+  setIsPlaying: (isPlaying: boolean) => void;
   
   // Actions - User chord
   setUserChordType: (type: number) => void;
@@ -59,7 +62,7 @@ interface ChordState {
   addChordToProgression: (chord: Chord) => void;
   updateChordInProgression: (index: number, chord: Chord) => void;
   removeChordFromProgression: (index: number) => void;
-  createNewProgression: (key: NoteName) => void;
+  createNewProgression: (key: NoteName) => ChordProgression;
   saveProgression: () => void;
   deleteProgression: (id: string) => void;
   loadProgression: (id: string) => void;
@@ -85,15 +88,17 @@ export const useChordStore = create<ChordState>()(
       currentChord: null,
       currentProgression: null,
       currentSong: null,
+      isPlaying: false,
       
       currentKey: 'C',
       currentMode: 'major',
-      currentInstrument: 'piano',
+      currentInstrument: 'balafon',
       currentFlamValue: '1/16',
       
       savedChords: [],
       savedProgressions: [],
       savedSongs: [],
+      savedSections: [],
       
       userChordType: 0,
       userChordBassOffset: 0,
@@ -135,6 +140,8 @@ export const useChordStore = create<ChordState>()(
         setFlamValue(flamValue);
         set({ currentFlamValue: flamValue });
       },
+      
+      setIsPlaying: (isPlaying) => set({ isPlaying }),
       
       // Actions - User chord
       setUserChordType: (type) => set({ userChordType: type }),
@@ -199,12 +206,13 @@ export const useChordStore = create<ChordState>()(
           timeSignature: [4, 4] as TimeSignature,
           tempo: 120,
           key,
-          mode: currentMode, // Include the current mode
+          mode: currentMode,
           createdAt: now,
           updatedAt: now
         };
         
         set({ currentProgression: newProgression });
+        return newProgression;
       },
       
       saveProgression: () => {

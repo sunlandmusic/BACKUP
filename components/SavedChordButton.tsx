@@ -116,7 +116,7 @@ export const SavedChordButton: React.FC<SavedChordButtonProps> = ({
         <Text style={styles.chordName}>{getChordDisplayName()}</Text>
       )}
       {!chord && saveMode && (
-        <Text style={styles.emptyText}>Empty</Text>
+        <Text style={styles.saveText}>Empty</Text>
       )}
     </Pressable>
   );
@@ -124,7 +124,7 @@ export const SavedChordButton: React.FC<SavedChordButtonProps> = ({
 
 const styles = StyleSheet.create({
   button: {
-    width: 65,
+    width: 68,
     height: 48,
     borderRadius: 4,
     justifyContent: 'center',
@@ -151,9 +151,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
   },
-  emptyText: {
-    color: colors.text,
+  saveText: {
+    color: colors.error,
     fontSize: 12,
-    opacity: 0.7,
+    fontWeight: 'bold',
   },
 });

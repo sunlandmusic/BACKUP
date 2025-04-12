@@ -9,7 +9,8 @@ import { Chord, FlamValue, InstrumentType } from "@/types/music";
 import { playChord, stopChord } from "@/utils/audio-utils";
 import { usePathname } from "expo-router";
 import { NavigationMenu } from "@/components/NavigationMenu";
-import { ChevronLeft, ChevronRight, Eye } from "lucide-react-native";
+import { Eye, Play } from "lucide-react-native";
+import * as Tone from 'tone';
 
 export default function SoundsScreen() {
   const { 
@@ -19,7 +20,9 @@ export default function SoundsScreen() {
     setCurrentInstrument, 
     setCurrentFlamValue,
     setCurrentChord,
-    currentChord
+    currentChord,
+    isPlaying,
+    setIsPlaying
   } = useChordStore();
   
   const [savedChordPage, setSavedChordPage] = useState(0);
@@ -84,6 +87,15 @@ export default function SoundsScreen() {
     setMenuVisible(!menuVisible);
   };
 
+  const handlePlayPause = () => {
+    if (isPlaying) {
+      Tone.Transport.stop();
+    } else {
+      Tone.Transport.start();
+    }
+    setIsPlaying(!isPlaying);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
@@ -101,7 +113,7 @@ export default function SoundsScreen() {
       />
       
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>SOUNDS</Text>
+        <Text style={styles.title}>SOUNDS</Text>
       </View>
       
       <View style={styles.content}>
@@ -118,45 +130,53 @@ export default function SoundsScreen() {
           
           {/* Right side - Saved chord grid */}
           <View style={styles.rightPanel}>
-            <SavedChordGrid
-              chords={savedChords}
-              onChordPress={handleChordPress}
-              onChordRelease={handleChordRelease}
-              currentPage={savedChordPage}
-              totalPages={Math.ceil(savedChords.length / 16) || 1}
-              onPageChange={setSavedChordPage}
-              columns={4}
-              rows={4}
-              activeChordIndex={activeChordIndex}
-              saveMode={false}
-            />
+            <View style={styles.gridContainer}>
+              <SavedChordGrid
+                chords={savedChords}
+                onChordPress={handleChordPress}
+                onChordRelease={handleChordRelease}
+                currentPage={savedChordPage}
+                totalPages={2}
+                onPageChange={setSavedChordPage}
+                columns={4}
+                rows={4}
+                activeChordIndex={activeChordIndex}
+                saveMode={false}
+              />
+            </View>
             
-            {/* Pagination arrows */}
-            <View style={styles.paginationContainer}>
-              <Pressable 
-                onPress={() => setSavedChordPage(prev => Math.max(0, prev - 1))}
-                disabled={savedChordPage === 0}
-                style={styles.paginationArrow}
-              >
-                <ChevronLeft 
-                  size={24} 
-                  color={savedChordPage === 0 ? colors.textMuted : colors.text} 
-                />
-              </Pressable>
-              
-              <Pressable 
-                onPress={() => setSavedChordPage(prev => {
-                  const maxPage = Math.ceil(savedChords.length / 16) - 1;
-                  return prev < maxPage ? prev + 1 : prev;
-                })}
-                disabled={savedChordPage >= Math.ceil(savedChords.length / 16) - 1}
-                style={styles.paginationArrow}
-              >
-                <ChevronRight 
-                  size={24} 
-                  color={savedChordPage >= Math.ceil(savedChords.length / 16) - 1 ? colors.textMuted : colors.text} 
-                />
-              </Pressable>
+            {/* Combined container for pagination and transport */}
+            <View style={styles.controlsContainer}>
+              <View style={styles.paginationContainer}>
+                <Pressable 
+                  onPress={() => setSavedChordPage(0)}
+                  disabled={savedChordPage === 0}
+                  style={styles.paginationArrow}
+                >
+                  <View style={[styles.arrowCircle, savedChordPage === 0 && styles.arrowCircleDisabled]}>
+                    <Play 
+                      size={16} 
+                      color={savedChordPage === 0 ? colors.textMuted : colors.textOffWhite}
+                      style={styles.prevArrow}
+                      fill={savedChordPage === 0 ? colors.textMuted : colors.textOffWhite}
+                    />
+                  </View>
+                </Pressable>
+                
+                <Pressable 
+                  onPress={() => setSavedChordPage(1)}
+                  disabled={savedChordPage === 1}
+                  style={styles.paginationArrow}
+                >
+                  <View style={[styles.arrowCircle, savedChordPage === 1 && styles.arrowCircleDisabled]}>
+                    <Play 
+                      size={16} 
+                      color={savedChordPage === 1 ? colors.textMuted : colors.textOffWhite}
+                      fill={savedChordPage === 1 ? colors.textMuted : colors.textOffWhite}
+                    />
+                  </View>
+                </Pressable>
+              </View>
             </View>
           </View>
         </View>
@@ -169,38 +189,28 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+    paddingHorizontal: 12,
+    paddingTop: 36,
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
-    position: 'relative',
+    marginBottom: 12,
     marginTop: 10,
   },
-  headerTitle: {
-    color: colors.text,
-    fontSize: 18,
+  title: {
+    fontSize: 20,
     fontWeight: 'bold',
-  },
-  eyeButton: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 10,
+    color: colors.text,
   },
   content: {
     flex: 1,
     padding: 16,
-    maxWidth: Platform.OS === 'web' ? 1200 : undefined, // Constrain max width on web
+    paddingTop: 26,
+    maxWidth: Platform.OS === 'web' ? 1200 : undefined,
     width: '100%',
-    alignSelf: 'center', // Center the content on web
+    alignSelf: 'center',
   },
   mainLayout: {
     flexDirection: 'row',
@@ -208,12 +218,13 @@ const styles = StyleSheet.create({
     flexWrap: Platform.OS === 'web' ? 'nowrap' : 'wrap', // Prevent wrapping on web
   },
   leftPanel: {
-    width: 320,
+    width: 352,
     marginRight: 16,
     marginTop: -20,
-    // Ensure consistent width on all platforms
-    minWidth: 320,
-    maxWidth: 320,
+    minWidth: 352,
+    maxWidth: 352,
+    flex: 1,
+    transform: [{ scale: 1.1 }], // Scale up the left panel
   },
   rightPanel: {
     flex: 1,
@@ -222,15 +233,43 @@ const styles = StyleSheet.create({
     // Ensure minimum width on web to prevent squishing
     minWidth: Platform.OS === 'web' ? 400 : undefined,
   },
-  paginationContainer: {
+  gridContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+    position: 'relative',
+    width: '100%',
+  },
+  controlsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     position: 'absolute',
-    bottom: -20, // Moved down by 10px (from -10 to -20)
+    bottom: 35,
     left: 0,
     right: 0,
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+  },
+  paginationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 41,
+  },
+  transportButton: {
+    width: 53,
+    height: 53,
+    borderRadius: 26.5,
+    backgroundColor: colors.buttonGrey,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 20,
+  },
+  transportButtonActive: {
+    backgroundColor: colors.buttonActive,
+  },
+  transportButtonText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: 'bold',
   },
   paginationArrow: {
     width: 48,
@@ -239,5 +278,36 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  arrowCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.buttonGrey,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  arrowCircleDisabled: {
+    backgroundColor: colors.surfaceLight,
+  },
+  prevArrow: {
+    transform: [{ rotate: '180deg' }],
+  },
+  nextArrow: {
+    marginRight: -2,
+  },
+  eyeButton: {
+    position: 'absolute',
+    top: 20,
+    left: 10,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
   },
 });
