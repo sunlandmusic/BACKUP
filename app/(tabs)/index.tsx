@@ -56,6 +56,21 @@ export default function ChordComposeScreen() {
   // Get current route for navigation menu
   const pathname = usePathname();
   
+  // Add new state variables
+  const [pressedChordIndex, setPressedChordIndex] = useState<number | null>(null);
+  const [lastMinusPress, setLastMinusPress] = useState<number>(0);
+  
+  // Add state for minus button long press
+  const [isMinusLongPressed, setIsMinusLongPressed] = useState(false);
+  
+  // Add state for tracking pressed chord
+  const minusLongPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Add state for edit popup and copy/paste
+  const [isEditPopupVisible, setIsEditPopupVisible] = useState(false);
+  const [editMode, setEditMode] = useState<'none' | 'delete' | 'copy' | 'paste'>('none');
+  const [copiedChord, setCopiedChord] = useState<Chord | null>(null);
+  
   // Initialize audio on component mount
   useEffect(() => {
     const setupAudio = async () => {
@@ -188,6 +203,20 @@ export default function ChordComposeScreen() {
   
   // Handle contextual +/- button press
   const handleAdjustValue = (direction: 'up' | 'down') => {
+    if (direction === 'down') {
+      const now = Date.now();
+      if (now - lastMinusPress < 300 && pressedChordIndex !== null) { // 300ms for double tap
+        // Delete the chord at pressedChordIndex
+        const newSavedChords = [...savedChords];
+        newSavedChords[pressedChordIndex] = null;
+        setSavedChords(newSavedChords);
+        setCurrentChord(null);
+        setPressedChordIndex(null);
+        return;
+      }
+      setLastMinusPress(now);
+    }
+    
     if (!selectedControl) return;
     
     switch (selectedControl) {
@@ -247,53 +276,73 @@ export default function ChordComposeScreen() {
     }
   };
 
-  // Handle saved chord press
+  // Handle edit button press
+  const handleEditPress = () => {
+    if (isEditPopupVisible) {
+      // If popup is visible, close it and reset edit mode
+      setIsEditPopupVisible(false);
+      setEditMode('none');
+    } else {
+      // If popup is not visible, show it
+      setIsEditPopupVisible(true);
+    }
+  };
+
+  // Handle mode selection
+  const handleModeSelect = (mode: 'delete' | 'copy') => {
+    setEditMode(mode);
+    setIsEditPopupVisible(false);
+  };
+
+  // Handle saved chord press with edit modes
   const handleSavedChordPress = (index: number) => {
     if (saveMode) {
-      // In save mode, pressing a chord slot saves the current chord or last played chord
       handleSaveCurrentChord(index);
       setSaveMode(false);
       return;
     }
-    
-    if (savedChords.length <= index) return;
-    
-    const chord = savedChords[index];
-    if (!chord) return;
-    
-    // Set flag that a chord button is pressed
-    isChordButtonPressedRef.current = true;
-    
-    // Set active saved chord index for tracking
-    setActiveSavedChordIndex(index);
-    
-    // Set temporary highlighted chord for visualization
-    setTempHighlightedChord(chord);
-    
-    // Set the current chord in the store
-    setCurrentChord(chord);
-    setLastPlayedChord(chord); // Update last played chord
-    
-    // Play the chord
-    playChord(chord.notes);
+
+    if (editMode === 'delete') {
+      saveChord(undefined, index);
+      setEditMode('none');
+      return;
+    }
+
+    if (editMode === 'copy') {
+      const chord = savedChords[index];
+      if (chord) {
+        setCopiedChord(chord);
+        setEditMode('paste');
+      }
+      return;
+    }
+
+    if (editMode === 'paste' && copiedChord) {
+      saveChord(copiedChord, index);
+      setEditMode('none');
+      setCopiedChord(null);
+      return;
+    }
+
+    // Normal chord press behavior
+    setPressedChordIndex(index);
+    if (savedChords[index]) {
+      const chord = savedChords[index];
+      if (chord) {
+        setCurrentChord(chord);
+        playChord(chord.notes);
+        setActiveSavedChordIndex(index);
+      }
+    }
   };
 
-  // Handle saved chord release - immediately stop sound and clear highlight
+  // Handle saved chord release
   const handleSavedChordRelease = () => {
-    // Reset the pressed flag
-    isChordButtonPressedRef.current = false;
-    
-    // Clear active saved chord index
-    setActiveSavedChordIndex(null);
-    
-    // Clear temporary highlighted chord
-    setTempHighlightedChord(null);
-    
-    // Stop playing the chord
+    setPressedChordIndex(null);
     stopChord();
-    
-    // Clear the current chord when releasing the button
+    setTempHighlightedChord(null);
     setCurrentChord(null);
+    setActiveSavedChordIndex(null);
   };
 
   // Handle saving current chord
@@ -303,6 +352,7 @@ export default function ChordComposeScreen() {
     
     if (!chordToSave || index >= maxSavedChords) return;
     saveChord(chordToSave, index);
+    setSaveMode(false); // Exit save mode after saving
   };
 
   // Toggle save mode
@@ -432,6 +482,24 @@ export default function ChordComposeScreen() {
       { type: 'major' as ChordType, label: '+3 BASS', bassOffset: 3, color: colors.surfaceLight },
     ],
   ];
+
+  // Update minus button press handlers
+  const handleMinusButtonPressIn = () => {
+    // No special handling needed
+  };
+
+  const handleMinusButtonPressOut = () => {
+    handleAdjustValue('down');
+  };
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (minusLongPressTimerRef.current) {
+        clearTimeout(minusLongPressTimerRef.current);
+      }
+    };
+  }, []);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -614,12 +682,20 @@ export default function ChordComposeScreen() {
                   />
                 </View>
               </Pressable>
+
+              {/* Edit button */}
+              <Pressable 
+                style={[styles.editButton]}
+                onPress={handleEditPress}
+              >
+                <Text style={styles.editButtonText}>⋮</Text>
+              </Pressable>
             </View>
           </View>
         </View>
       </View>
       
-      {/* Plus/Minus buttons at right */}
+      {/* Plus/Minus buttons at right - restored to original position */}
       <View style={styles.plusMinusContainer}>
         <Pressable 
           style={styles.plusButton}
@@ -630,11 +706,30 @@ export default function ChordComposeScreen() {
         
         <Pressable 
           style={styles.minusButton}
-          onPress={() => handleAdjustValue('down')}
+          onPressIn={handleMinusButtonPressIn}
+          onPressOut={handleMinusButtonPressOut}
         >
           <Text style={styles.plusMinusText}>-</Text>
         </Pressable>
       </View>
+
+      {/* Edit popup */}
+      {isEditPopupVisible && (
+        <View style={styles.editPopup}>
+          <Pressable
+            style={styles.editPopupButton}
+            onPress={() => handleModeSelect('delete')}
+          >
+            <Text style={styles.editPopupButtonText}>Clear</Text>
+          </Pressable>
+          <Pressable
+            style={styles.editPopupButton}
+            onPress={() => handleModeSelect('copy')}
+          >
+            <Text style={styles.editPopupButtonText}>Copy/Paste</Text>
+          </Pressable>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -840,29 +935,46 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-    width: 40, // REDUCED from 45 to 40 (by 5px) as requested
+    width: 40,
     justifyContent: 'center',
     alignItems: 'center',
     borderLeftWidth: 1,
     borderLeftColor: colors.border,
   },
-  minusButton: {
-    width: 40, // REDUCED from 45 to 40 (by 5px) as requested
-    height: 140, // Height set to 140 as requested
+  plusButton: {
+    width: 40,
+    height: 140,
     borderRadius: 8,
-    backgroundColor: colors.buttonGrey, // Updated to use buttonGrey
+    backgroundColor: colors.buttonGrey,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  minusButton: {
+    width: 40,
+    height: 140,
+    borderRadius: 8,
+    backgroundColor: colors.buttonGrey,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 10,
   },
-  plusButton: {
-    width: 40, // REDUCED from 45 to 40 (by 5px) as requested
-    height: 140, // Height set to 140 as requested
-    borderRadius: 8,
-    backgroundColor: colors.buttonGrey, // Updated to use buttonGrey
+  editButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.buttonGrey,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 10,
+    marginLeft: 2,
+  },
+  editButtonText: {
+    color: '#8B0000',  // DarkRed - same as save button
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  editButtonActive: {
+    backgroundColor: colors.error,
   },
   plusMinusText: {
     color: colors.textOffWhite, // Updated to off-white
@@ -875,5 +987,36 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 270, // Changed from 170 to 270 to move 100 pixels to the right
+  },
+  minusButtonLongPressed: {
+    backgroundColor: colors.error,
+  },
+  editPopup: {
+    position: 'absolute',
+    right: 100,
+    top: '50%',
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  editPopupButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 4,
+    backgroundColor: colors.buttonGrey,
+    marginVertical: 5,
+  },
+  editPopupButtonText: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
   },
 });

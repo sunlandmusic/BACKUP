@@ -13,6 +13,7 @@ interface SavedChordButtonProps {
   chord?: Chord;
   saveMode?: boolean;
   isHighlighted?: boolean;
+  isCurrentlyPlaying?: boolean;
 }
 
 export const SavedChordButton: React.FC<SavedChordButtonProps> = ({
@@ -24,7 +25,8 @@ export const SavedChordButton: React.FC<SavedChordButtonProps> = ({
   index,
   chord,
   saveMode = false,
-  isHighlighted = false
+  isHighlighted = false,
+  isCurrentlyPlaying = false
 }) => {
   // Reference to track if button is pressed
   const isPressedRef = useRef(false);
@@ -102,7 +104,8 @@ export const SavedChordButton: React.FC<SavedChordButtonProps> = ({
         styles.button, 
         { backgroundColor: color },
         saveMode && styles.saveButton,
-        isHighlighted && styles.highlightedButton
+        isHighlighted && styles.highlightedButton,
+        isCurrentlyPlaying && styles.currentlyPlayingButton
       ]}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
@@ -155,5 +158,9 @@ const styles = StyleSheet.create({
     color: colors.error,
     fontSize: 12,
     fontWeight: 'bold',
+  },
+  currentlyPlayingButton: {
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
 });

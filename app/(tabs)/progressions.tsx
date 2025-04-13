@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { StyleSheet, Text, View, SafeAreaView, Pressable, Platform } from "react-native";
+import { StyleSheet, Text, View, SafeAreaView, Pressable, Platform, Modal } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { colors } from "@/constants/colors";
 import { Eye, Play, Square, ChevronLeft, ChevronRight } from "lucide-react-native";
@@ -7,13 +7,19 @@ import { NavigationMenu } from "@/components/NavigationMenu";
 import { usePathname } from "expo-router";
 import { useChordStore } from "@/stores/chord-store";
 import { Chord, ChordType, NoteName, noteNames, Progression } from "@/types/music";
-import { playChord, stopChord, initAudio, setBpm } from "@/utils/audio-utils";
+import { 
+  playChord, 
+  stopChord, 
+  playClick, 
+  stopAllSounds,
+  initAudio,
+  setBpm 
+} from "@/utils/audio-utils";
 import { createChord, getScaleNotes } from "@/utils/chord-utils";
 import { HorizontalPiano } from "@/components/HorizontalPiano";
 import { SavedChordButton } from "@/components/SavedChordButton";
 import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
-import * as Tone from 'tone';
 import { useProgressionStore } from "@/stores/progression-store";
 
 declare global {
@@ -40,6 +46,11 @@ interface SavedSection {
   settings: SettingsState;
 }
 
+interface SavedProgression {
+  steps: (Chord | null)[];
+  settings: SettingsState;
+}
+
 export default function ProgressionsScreen() {
   const { 
     currentKey, 
@@ -51,6 +62,13 @@ export default function ProgressionsScreen() {
     setCurrentFlamValue,
     setIsPlaying
   } = useChordStore();
+
+  // Add state declarations here
+  const [editMode, setEditMode] = useState(false);
+  const [selectedChordIndex, setSelectedChordIndex] = useState<number | null>(null);
+  const [copiedChord, setCopiedChord] = useState<Chord | null>(null);
+  const [savedChords, setSavedChords] = useState<(Chord | null)[]>(Array(32).fill(null));
+  const [editModalVisible, setEditModalVisible] = useState(false);
 
   const renderSavedChordsGrid = () => {
     return (
@@ -76,10 +94,17 @@ export default function ProgressionsScreen() {
                   key={`saved-chord-${actualIndex}`}
                   label={`${actualIndex + 1}`}
                   color={savedChords[actualIndex] ? getSavedChordColor(actualIndex) : colors.buttonGrey}
-                  onPress={() => handleSavedChordPress(actualIndex)}
+                  onPress={() => {
+                    if (editMode) {
+                      setSelectedChordIndex(actualIndex);
+                      setEditModalVisible(true);
+                    } else {
+                      handleSavedChordPress(actualIndex);
+                    }
+                  }}
                   onPressOut={handleSavedChordRelease}
                   index={actualIndex + 1}
-                  chord={savedChords[actualIndex]}
+                  chord={savedChords[actualIndex] || undefined}
                   saveMode={saveMode}
                   isHighlighted={activeSavedChordIndex === actualIndex}
                 />
@@ -87,9 +112,9 @@ export default function ProgressionsScreen() {
             );
           })}
         </View>
-        <View style={styles.arrowButtonsContainer}>
+        <View style={styles.chordGridControls}>
           <Pressable 
-            style={styles.arrowButton}
+            style={styles.chordGridNavButton}
             onPress={handleChordGridLeftArrowPress}
             disabled={chordGridPage === 0}
           >
@@ -97,21 +122,21 @@ export default function ProgressionsScreen() {
               <Play 
                 size={16} 
                 color={chordGridPage === 0 ? colors.textMuted : colors.textOffWhite}
-                style={styles.prevArrow}
+                style={{ transform: [{ rotate: '180deg' }] }}
                 fill={chordGridPage === 0 ? colors.textMuted : colors.textOffWhite}
               />
             </View>
           </Pressable>
           <Pressable 
-            style={styles.arrowButton}
+            style={styles.chordGridNavButton}
             onPress={handleChordGridRightArrowPress}
-            disabled={chordGridPage === 1}
+            disabled={chordGridPage >= 1}
           >
-            <View style={[styles.arrowCircle, chordGridPage === 1 && styles.arrowCircleDisabled]}>
+            <View style={[styles.arrowCircle, chordGridPage >= 1 && styles.arrowCircleDisabled]}>
               <Play 
                 size={16} 
-                color={chordGridPage === 1 ? colors.textMuted : colors.textOffWhite}
-                fill={chordGridPage === 1 ? colors.textMuted : colors.textOffWhite}
+                color={chordGridPage >= 1 ? colors.textMuted : colors.textOffWhite}
+                fill={chordGridPage >= 1 ? colors.textMuted : colors.textOffWhite}
               />
             </View>
           </Pressable>
@@ -119,13 +144,14 @@ export default function ProgressionsScreen() {
       </View>
     );
   };
+
   // Navigation menu state
   const [menuVisible, setMenuVisible] = useState(false);
   const pathname = usePathname();
   const {
     currentChord,
     setCurrentChord,
-    savedChords,
+    savedChords: chordStoreSavedChords,
     saveChord,
     setCurrentKey,
     setCurrentMode,
@@ -171,43 +197,22 @@ export default function ProgressionsScreen() {
   // Initialize audio on component mount
   useEffect(() => {
     const setupAudio = async () => {
-      try {
-        // Initialize audio system
-        await initAudio();
-        
-        // Initialize Tone.js
-        if (Tone.context.state !== 'running') {
-          await Tone.start();
-        }
-        
-        // Create audio context for click sound
-        if (Platform.OS === 'web') {
-          const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-          
-          // Create gain node
-          const gainNode = audioContext.createGain();
-          gainNode.gain.value = 0.3;
-          gainNode.connect(audioContext.destination);
-          clickGainRef.current = gainNode;
-        }
-        
-        console.log('[Audio] Audio system initialized successfully');
-      } catch (error) {
-        console.error('Error initializing audio:', error);
-        alert('Error initializing audio system. Please try again.');
-      }
+      await initAudio();
+      setBpm(settings.bpm);
     };
     
     setupAudio();
 
+    // Cleanup function
     return () => {
-      if (clickOscillatorRef.current) {
-        clickOscillatorRef.current.stop();
-      }
+      // Stop any playing sounds
       stopChord();
-      Tone.Transport.stop();
+      // Clear any intervals
+      if (sequencerTimerRef.current) {
+        clearInterval(sequencerTimerRef.current);
+      }
     };
-  }, []);
+  }, [settings.bpm]);
 
   // Function to play click sound
   const playClick = (step: number) => {
@@ -294,7 +299,7 @@ export default function ProgressionsScreen() {
 
       // Play the first click immediately when starting
       if (settings.click) {
-        playClick(0);
+        void playClick(0);
       }
 
       sequencerTimerRef.current = setInterval(() => {
@@ -303,20 +308,20 @@ export default function ProgressionsScreen() {
           
           // Play click on every 2nd step (half time)
           if (settings.click && nextStep % 2 === 0) {
-            playClick(nextStep);
+            void playClick(nextStep);
           }
 
           // Play the chord stored at this step if it exists
           const chord = stepSequencer.steps[nextStep];
           if (chord) {
-            stopChord();
-            playChord(chord.notes);
+            void stopChord();
+            void playChord(chord.notes);
             // Stop the chord after its stored duration
             setTimeout(() => {
-              stopChord();
+              void stopChord();
             }, chord.duration || 200);
           } else {
-            stopChord();
+            void stopChord();
           }
           
           return nextStep;
@@ -332,8 +337,7 @@ export default function ProgressionsScreen() {
         clearInterval(sequencerTimerRef.current);
         sequencerTimerRef.current = null;
       }
-      stopChord();
-      // Don't clear the currently playing sequence here
+      void stopChord();
     };
   }, [isPlaying, settings.bpm, settings.click, settings.bars, stepSequencer.steps]);
 
@@ -533,8 +537,11 @@ export default function ProgressionsScreen() {
   
   // Cleanup effect to stop any playing sounds when component unmounts
   useEffect(() => {
+    const cleanup = async () => {
+      await stopChord();
+    };
     return () => {
-      stopChord();
+      void cleanup();
     };
   }, []);
   
@@ -563,7 +570,7 @@ export default function ProgressionsScreen() {
   // Handle chord type button press
   const handleChordTypePress = (type: ChordType, label: string, bassOffset?: number) => {
     // Stop any currently playing sounds
-    Tone.Transport.stop();
+    void stopAllSounds();
     
     if (label.includes('BASS')) {
       // Handle bass offset buttons - make them toggleable
@@ -719,7 +726,7 @@ export default function ProgressionsScreen() {
 
   // Handle saved chord release - immediately stop sound and clear highlight
   const handleSavedChordRelease = () => {
-    Tone.Transport.stop();
+    void stopAllSounds();
     
     // Clear the current chord when releasing the button
     setCurrentChord(null);
@@ -775,13 +782,12 @@ export default function ProgressionsScreen() {
     }
   };
 
-  // Handle saved chord page navigation
+  // Update handleSavedChordPageChange
   const handleSavedChordPageChange = (direction: 'prev' | 'next') => {
-    if (direction === 'prev') {
-      setSavedChordPage(prev => Math.max(0, prev - 1));
-    } else {
-      const maxPages = Math.ceil(maxSavedChords / savedChordsPerPage);
-      setSavedChordPage(prev => prev < maxPages - 1 ? prev + 1 : prev);
+    if (direction === 'prev' && savedChordPage > 0) {
+      setSavedChordPage(prev => prev - 1);
+    } else if (direction === 'next' && savedChordPage < 1) {
+      setSavedChordPage(prev => prev + 1);
     }
   };
 
@@ -826,44 +832,44 @@ export default function ProgressionsScreen() {
   };
 
   const renderSettings = () => {
-  return (
+    return (
       <View style={styles.settingsButtons}>
-          <Pressable 
+        <Pressable 
           style={[styles.settingsButton, selectedSetting === 'bpm' && styles.settingsButtonActive]}
-            onPress={() => handleSettingSelect('bpm')}
-          >
+          onPress={() => handleSettingSelect('bpm')}
+        >
           <Text style={styles.settingsButtonName}>BPM</Text>
           <Text style={styles.settingsButtonValue}>{settings.bpm}</Text>
-          </Pressable>
-          <Pressable 
+        </Pressable>
+        <Pressable 
           style={[styles.settingsButton, selectedSetting === 'timeSignature' && styles.settingsButtonActive]}
-            onPress={() => handleSettingSelect('timeSignature')}
-          >
+          onPress={() => handleSettingSelect('timeSignature')}
+        >
           <Text style={styles.settingsButtonName}>TS</Text>
           <Text style={styles.settingsButtonValue}>{settings.timeSignature}</Text>
-          </Pressable>
-          <Pressable 
+        </Pressable>
+        <Pressable 
           style={[styles.settingsButton, selectedSetting === 'click' && styles.settingsButtonActive]}
-            onPress={() => handleSettingSelect('click')}
-          >
+          onPress={() => handleSettingSelect('click')}
+        >
           <Text style={styles.settingsButtonName}>CLICK</Text>
           <Text style={styles.settingsButtonValue}>{settings.click ? 'On' : 'Off'}</Text>
-          </Pressable>
-          <Pressable 
+        </Pressable>
+        <Pressable 
           style={[styles.settingsButton, selectedSetting === 'bars' && styles.settingsButtonActive]}
-            onPress={() => handleSettingSelect('bars')}
-          >
+          onPress={() => handleSettingSelect('bars')}
+        >
           <Text style={styles.settingsButtonName}>BARS</Text>
           <Text style={styles.settingsButtonValue}>{settings.bars}</Text>
-          </Pressable>
-            <Pressable 
+        </Pressable>
+        <Pressable 
           style={[styles.settingsButton, selectedSetting === 'chord' && styles.settingsButtonActive]}
           onPress={() => handleSettingSelect('chord')}
         >
           <Text style={styles.settingsButtonName}>CHORD</Text>
           <Text style={styles.settingsButtonValue}>{getChordDisplayName()}</Text>
-            </Pressable>
-          </View>
+        </Pressable>
+      </View>
     );
   };
 
@@ -938,72 +944,42 @@ export default function ProgressionsScreen() {
 
   const handlePlayPress = async () => {
     try {
-      if (isPlaying) {
-        // Stop playback
-        if (sequencerTimerRef.current) {
-          clearInterval(sequencerTimerRef.current);
-          sequencerTimerRef.current = null;
-        }
-        stopChord();
-        setIsPlaying(false);
-        setCurrentStep(0);
-      } else {
+      if (!isPlaying) {
         // Start playback
-        await initAudio();
-        
-        if (Platform.OS === 'web') {
-          const audioCtx = Tone.context;
-          if (audioCtx.state === 'suspended') {
-            await audioCtx.resume();
-          }
-        }
-        
         setIsPlaying(true);
-        setCurrentStep(0); // Reset to first step
+        setCurrentStep(0);
         
-        // Play the first chord immediately if it exists
-        const firstChord = stepSequencer.steps[0];
-        if (firstChord) {
-          playChord(firstChord.notes);
-        }
-        
-        // Start sequencer with more precise timing
-        const stepDuration = (60 / settings.bpm) * 1000; // Convert BPM to milliseconds
+        // Start sequencer timer
         sequencerTimerRef.current = setInterval(() => {
           setCurrentStep(prev => {
-            const nextStep = (prev + 1) % (settings.bars * 16); // 16 steps per bar
-            
-            // Play click if enabled
-            if (settings.click) {
-              playClick(nextStep);
+            const nextStep = (prev + 1) % 16;
+            if (nextStep === 0) {
+              setIsPlaying(false);
+              if (sequencerTimerRef.current) {
+                clearInterval(sequencerTimerRef.current);
+              }
             }
-            
-            // Play chord if it exists at this step
-            const chord = stepSequencer.steps[nextStep];
-            if (chord) {
-              playChord(chord.notes);
-            }
-            
             return nextStep;
           });
-        }, stepDuration);
+        }, 60000 / settings.bpm); // Convert BPM to milliseconds
+      } else {
+        // Stop playback
+        setIsPlaying(false);
+        setCurrentStep(0);
+        if (sequencerTimerRef.current) {
+          clearInterval(sequencerTimerRef.current);
+        }
+        void stopAllSounds();
       }
     } catch (error) {
-      console.error('Error in play button:', error);
-      alert('Error starting playback. Please try again.');
+      console.error('Error handling play press:', error);
       setIsPlaying(false);
-    }
-  };
-
-  // Add cleanup effect
-  useEffect(() => {
-    return () => {
+      setCurrentStep(0);
       if (sequencerTimerRef.current) {
         clearInterval(sequencerTimerRef.current);
       }
-      stopChord();
-    };
-  }, []);
+    }
+  };
 
   // Update the renderStepSequencer function to remove the play button from here
   const renderStepSequencer = () => {
@@ -1026,33 +1002,36 @@ export default function ProgressionsScreen() {
         <View style={styles.stepSequencerGrid}>
           {rows}
         </View>
-        <View style={styles.seqArrowButtonsContainer}>
-          <Pressable 
-            style={styles.arrowButton}
+        <View style={styles.seqGridControls}>
+          <Pressable
+            style={[
+              styles.seqArrowButton,
+              seqGridPage === 0 && styles.disabledButton
+            ]}
             onPress={handleSeqLeftArrowPress}
             disabled={seqGridPage === 0}
           >
-            <View style={[styles.arrowCircle, seqGridPage === 0 && styles.arrowCircleDisabled]}>
-              <Play 
-                size={16} 
-                color={seqGridPage === 0 ? colors.textMuted : colors.textOffWhite}
-                style={styles.prevArrow}
-                fill={seqGridPage === 0 ? colors.textMuted : colors.textOffWhite}
-              />
-            </View>
+            <Ionicons
+              name="play"
+              size={16}
+              color={seqGridPage === 0 ? colors.textMuted : colors.textOffWhite}
+              style={styles.seqLeftArrowIcon}
+            />
           </Pressable>
           <Pressable
-            style={styles.arrowButton}
+            style={[
+              styles.seqArrowButton,
+              seqGridPage === 1 && styles.disabledButton
+            ]}
             onPress={handleSeqRightArrowPress}
             disabled={seqGridPage === 1}
           >
-            <View style={[styles.arrowCircle, seqGridPage === 1 && styles.arrowCircleDisabled]}>
-              <Play 
-                size={16} 
-                color={seqGridPage === 1 ? colors.textMuted : colors.textOffWhite}
-                fill={seqGridPage === 1 ? colors.textMuted : colors.textOffWhite}
-              />
-            </View>
+            <Ionicons
+              name="play"
+              size={16}
+              color={seqGridPage === 1 ? colors.textMuted : colors.textOffWhite}
+              style={styles.seqRightArrowIcon}
+            />
           </Pressable>
         </View>
       </View>
@@ -1122,9 +1101,11 @@ const styles = StyleSheet.create({
       zIndex: 1,
   },
   savedChordsGrid: {
+    flex: 1,
     flexDirection: 'row',
     flexWrap: 'wrap',
-      gap: 8,
+    gap: 8,
+    marginLeft: -10,
   },
   buttonContainer: {
     alignItems: 'center',
@@ -1132,7 +1113,7 @@ const styles = StyleSheet.create({
   },
   savedChordButton: {
     width: 68,
-    height: 48,
+    height: 34,  // Changed from 48 to 34 (30% reduction)
     backgroundColor: colors.buttonGrey,
     borderRadius: 8,
     justifyContent: 'center',
@@ -1223,12 +1204,12 @@ const styles = StyleSheet.create({
   bottomControls: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
-      position: 'absolute',
-      bottom: -45,
-      left: 10,
-      right: 0,
-      paddingHorizontal: 16,
+    gap: 2,
+    position: 'absolute',
+    bottom: 23,
+    left: 10,
+    right: 0,
+    paddingHorizontal: 16,
   },
   deleteButton: {
       width: 24,
@@ -1309,24 +1290,31 @@ const styles = StyleSheet.create({
       flexDirection: 'column',
       justifyContent: 'center',
       gap: 20,
-      marginTop: 8,
+      marginTop: 18,
       position: 'absolute',
-      right: 140,
-      top: '40%',
+      right: -20,
+      top: '50%',
       transform: [{ translateY: -50 }],
     },
     seqArrowButtonsContainer: {
       flexDirection: 'column',
       justifyContent: 'center',
       gap: 20,
-      marginTop: 8,
+      marginTop: 18,
       position: 'absolute',
-      right: 80,
-      top: '40%',
+      right: -20,
+      top: '50%',
       transform: [{ translateY: -50 }],
       zIndex: 2,
     },
-    arrowButton: {
+    leftArrowButton: {
+      width: 36,
+      height: 36,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 40, // Added to move left arrow independently
+    },
+    rightArrowButton: {
       width: 36,
       height: 36,
       justifyContent: 'center',
@@ -1355,23 +1343,14 @@ const styles = StyleSheet.create({
     },
     plusMinusContainer: {
       position: 'absolute',
-      right: -40,
-      top: 15,
-      transform: [{ translateY: -50 }],
+      right: 0,
+      top: 0,
+      bottom: 0,
       width: 40,
       justifyContent: 'center',
       alignItems: 'center',
       borderLeftWidth: 1,
       borderLeftColor: colors.border,
-    },
-    minusButton: {
-      width: 40,
-      height: 140,
-      borderRadius: 8,
-      backgroundColor: colors.buttonGrey,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginTop: 10,
     },
     plusButton: {
       width: 40,
@@ -1382,9 +1361,18 @@ const styles = StyleSheet.create({
       alignItems: 'center',
       marginBottom: 10,
     },
+    minusButton: {
+      width: 40,
+      height: 140,
+      borderRadius: 8,
+      backgroundColor: colors.buttonGrey,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginTop: 10,
+    },
     plusMinusText: {
       color: colors.textOffWhite,
-      fontSize: 28,
+      fontSize: 24,
       fontWeight: 'bold',
     },
     currentStep: {
@@ -1460,6 +1448,160 @@ const styles = StyleSheet.create({
     savedChordButtonTextEmpty: {
       color: '#808080',
     },
+    settingsGrid: {
+      marginBottom: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: '100%',
+    },
+    settingButton: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      backgroundColor: colors.surfaceLight,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+    },
+    selectedSetting: {
+      backgroundColor: colors.primary,
+    },
+    settingLabel: {
+      color: colors.text,
+      fontSize: 12,
+      marginBottom: 4,
+    },
+    settingValue: {
+      color: colors.text,
+      fontSize: 14,
+      fontWeight: 'bold',
+    },
+    saveButton: {
+      width: 24,
+      height: 48,
+      borderRadius: 8,
+      backgroundColor: colors.buttonGrey,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    saveButtonActive: {
+      borderWidth: 2,
+      borderColor: colors.error,
+    },
+    saveButtonText: {
+      color: '#8B0000',  // DarkRed
+      fontSize: 20,
+      fontWeight: 'bold',
+    },
+    savedChordNavButton: {
+      width: 36,
+      height: 36,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    savedChordNavButtonRight: {
+      width: 36,
+      height: 36,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    savedChordButtonsContainer: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    modalContent: {
+      backgroundColor: colors.background,
+      padding: 20,
+      borderRadius: 10,
+      width: '80%',
+      maxWidth: 400,
+    },
+    modalTitle: {
+      color: colors.text,
+      fontSize: 18,
+      fontWeight: 'bold',
+      marginBottom: 20,
+      textAlign: 'center',
+    },
+    modalButtons: {
+      flexDirection: 'row',
+      justifyContent: 'space-around',
+    },
+    modalButton: {
+      padding: 10,
+      borderRadius: 5,
+      backgroundColor: colors.buttonGrey,
+      minWidth: 100,
+      alignItems: 'center',
+    },
+    modalButtonText: {
+      color: colors.text,
+      fontSize: 16,
+      fontWeight: 'bold',
+    },
+    editButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.buttonGrey,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    editButtonText: {
+      color: colors.text,
+      fontSize: 24,
+      fontWeight: 'bold',
+    },
+    editButtonActive: {
+      backgroundColor: colors.primary,
+    },
+    chordGridControls: {
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      position: 'absolute',
+      right: -30,
+      top: '50%',
+      transform: [{ translateY: -40 }],
+    },
+    chordGridNavButton: {
+      width: 36,
+      height: 36,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    seqGridControls: {
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 20,
+      position: 'absolute',
+      right: -16,
+      top: '50%',
+      transform: [{ translateY: -53 }],
+      zIndex: 2,
+    },
+    seqArrowButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.buttonGrey,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    seqLeftArrowIcon: {
+      transform: [{ rotate: '180deg' }],
+    },
+    seqRightArrowIcon: {
+      transform: [{ rotate: '0deg' }],
+    },
   });
 
   // Add new state for play button
@@ -1493,7 +1635,7 @@ const styles = StyleSheet.create({
   const renderSavedSections = () => (
     <View style={[styles.savedSectionsContainer, { marginLeft: 30 }]}>
       <Pressable 
-        style={styles.arrowButton}
+        style={styles.leftArrowButton}
         onPress={handleSequenceLeftArrowPress}
         disabled={sequencePage === 0}
       >
@@ -1511,7 +1653,7 @@ const styles = StyleSheet.create({
         return renderSectionButton(actualIndex);
       })}
       <Pressable 
-        style={styles.arrowButton}
+        style={styles.rightArrowButton}
         onPress={handleSequenceRightArrowPress}
         disabled={sequencePage === 1}
       >
@@ -1526,6 +1668,145 @@ const styles = StyleSheet.create({
     </View>
   );
 
+  // Handle play/pause
+  const handlePlayPause = () => {
+    if (isPlaying) {
+      void stopAllSounds();
+    } else {
+      void playClick(0);
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  // Update handleEditPress
+  const handleEditPress = () => {
+    setEditModalVisible(true);
+  };
+
+  // Add these state variables for progression buttons
+  const [savedProgressions, setSavedProgressions] = useState<(SavedProgression | null)[]>([]);
+  const [activeSavedProgressionIndex, setActiveSavedProgressionIndex] = useState<number | null>(null);
+
+  // Handler for saving current progression
+  const handleSaveCurrentProgression = (index: number) => {
+    if (deleteMode) {
+      // Delete the progression
+      const newProgressions = [...savedProgressions];
+      newProgressions[index] = null;
+      setSavedProgressions(newProgressions);
+      return;
+    }
+
+    // Save current progression
+    const currentProgression: SavedProgression = {
+      steps: [...stepSequencer.steps],
+      settings: { ...settings }
+    };
+    
+    const newProgressions = [...savedProgressions];
+    newProgressions[index] = currentProgression;
+    setSavedProgressions(newProgressions);
+  };
+
+  // Handler for loading saved progression
+  const handleSavedProgressionPress = (index: number) => {
+    if (deleteMode) {
+      setSelectedProgressionIndex(index);
+      setEditModalVisible(true);
+      return;
+    }
+
+    const progression = savedProgressions[index];
+    if (progression) {
+      setStepSequencer(prev => ({
+        ...prev,
+        steps: [...progression.steps]
+      }));
+      setSettings(progression.settings);
+      setActiveSavedProgressionIndex(index);
+      setCurrentlyPlayingProgression(index);
+    }
+  };
+
+  // Handler for progression release
+  const handleSavedProgressionRelease = () => {
+    setActiveSavedProgressionIndex(null);
+  };
+
+  // Add state for currently playing progression
+  const [currentlyPlayingProgression, setCurrentlyPlayingProgression] = useState<number | null>(null);
+
+  // Add state for edit modal
+  const [selectedProgressionIndex, setSelectedProgressionIndex] = useState<number | null>(null);
+
+  // Update EditModal component
+  const EditModal = () => (
+    <Modal
+      visible={editModalVisible}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={() => {
+        setEditModalVisible(false);
+      }}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>Edit Chord</Text>
+          <View style={styles.modalButtons}>
+            <Pressable 
+              style={styles.modalButton}
+              onPress={() => {
+                if (selectedChordIndex !== null) {
+                  handleClearChord(selectedChordIndex);
+                  setEditModalVisible(false);
+                }
+              }}
+            >
+              <Text style={styles.modalButtonText}>Clear</Text>
+            </Pressable>
+            <Pressable 
+              style={styles.modalButton}
+              onPress={() => {
+                if (selectedChordIndex !== null) {
+                  if (copiedChord) {
+                    handlePasteChord(selectedChordIndex);
+                  } else {
+                    handleCopyChord(selectedChordIndex);
+                  }
+                  setEditModalVisible(false);
+                }
+              }}
+            >
+              <Text style={styles.modalButtonText}>{copiedChord ? 'Paste' : 'Copy'}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  // Add these handler functions near other handler functions
+  const handleClearChord = (index: number) => {
+    const newSavedChords = [...savedChords];
+    newSavedChords[index] = null;
+    setSavedChords(newSavedChords);
+  };
+
+  const handleCopyChord = (index: number) => {
+    const chord = savedChords[index];
+    if (chord) {
+      setCopiedChord(chord);
+    }
+  };
+
+  const handlePasteChord = (index: number) => {
+    if (copiedChord) {
+      const newSavedChords = [...savedChords];
+      newSavedChords[index] = copiedChord;
+      setSavedChords(newSavedChords);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
@@ -1539,17 +1820,6 @@ const styles = StyleSheet.create({
         <View style={styles.leftContent}>
           {/* Saved Chords Grid */}
           {renderSavedChordsGrid()}
-          
-          {/* Bottom Controls */}
-          <View style={styles.bottomControls}>
-            {renderSavedSections()}
-          </View>
-          <Pressable 
-            style={[styles.deleteButton, deleteMode && styles.deleteActive]}
-            onPress={handleDeletePress}
-          >
-            <Text style={styles.deleteButtonText}>D</Text>
-          </Pressable>
         </View>
         
         <View style={styles.rightContent}>
@@ -1565,12 +1835,98 @@ const styles = StyleSheet.create({
         </View>
       </View>
 
+      {/* Plus/Minus buttons at right */}
+      <View style={styles.plusMinusContainer}>
+        <Pressable 
+          style={styles.plusButton}
+          onPress={() => handleSettingAdjust('up')}
+        >
+          <Text style={styles.plusMinusText}>+</Text>
+        </Pressable>
+        
+        <Pressable 
+          style={styles.minusButton}
+          onPress={() => handleSettingAdjust('down')}
+        >
+          <Text style={styles.plusMinusText}>-</Text>
+        </Pressable>
+      </View>
+
+      {/* Bottom row with save, navigation, and edit buttons */}
+      <View style={styles.bottomControls}>
+        {/* Delete button */}
+        <Pressable 
+          style={[styles.saveButton, deleteMode && styles.saveButtonActive]}
+          onPress={handleDeletePress}
+        >
+          <Text style={styles.saveButtonText}>D</Text>
+        </Pressable>
+
+        {/* Left arrow button */}
+        <Pressable 
+          style={styles.savedChordNavButton}
+          onPress={() => handleSavedChordPageChange('prev')}
+          disabled={savedChordPage === 0}
+        >
+          <View style={[styles.arrowCircle, savedChordPage === 0 && styles.arrowCircleDisabled]}>
+            <Play 
+              size={16} 
+              color={savedChordPage === 0 ? colors.textMuted : colors.textOffWhite}
+              style={{ transform: [{ rotate: '180deg' }] }}
+              fill={savedChordPage === 0 ? colors.textMuted : colors.textOffWhite}
+            />
+          </View>
+        </Pressable>
+        
+        {/* Saved progression buttons */}
+        <View style={styles.savedChordButtonsContainer}>
+          {Array.from({ length: 8 }).map((_, index) => {
+            const progressionIndex = savedChordPage * 8 + index;
+            const progression = savedProgressions[progressionIndex];
+            const isActive = activeSavedProgressionIndex === progressionIndex;
+            const isCurrentlyPlaying = currentlyPlayingProgression === progressionIndex;
+            
+            return (
+              <SavedChordButton
+                key={`saved-progression-${progressionIndex}`}
+                label={`${progressionIndex + 1}`}
+                color={progression ? colors.primary : colors.buttonGrey}
+                onPress={() => handleSavedProgressionPress(progressionIndex)}
+                onPressOut={handleSavedProgressionRelease}
+                onLongPress={() => handleSaveCurrentProgression(progressionIndex)}
+                index={progressionIndex + 1}
+                chord={undefined}
+                saveMode={deleteMode}
+                isHighlighted={isActive || isCurrentlyPlaying}
+                isCurrentlyPlaying={isCurrentlyPlaying}
+              />
+            );
+          })}
+        </View>
+
+        {/* Right arrow button */}
+        <Pressable 
+          style={styles.savedChordNavButtonRight}
+          onPress={() => handleSavedChordPageChange('next')}
+          disabled={savedChordPage >= 1}
+        >
+          <View style={[styles.arrowCircle, savedChordPage >= 1 && styles.arrowCircleDisabled]}>
+            <Play 
+              size={16} 
+              color={savedChordPage >= 1 ? colors.textMuted : colors.textOffWhite}
+              fill={savedChordPage >= 1 ? colors.textMuted : colors.textOffWhite}
+            />
+          </View>
+        </Pressable>
+      </View>
+
       {/* Navigation Menu */}
       <NavigationMenu 
         visible={menuVisible} 
         onClose={() => setMenuVisible(false)} 
         currentRoute={pathname}
       />
+      <EditModal />
     </SafeAreaView>
   );
 }

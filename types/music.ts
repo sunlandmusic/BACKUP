@@ -55,10 +55,10 @@ export type MusicMode =
 export type InstrumentType = 
   | 'balafon'
   | 'piano' 
-  | 'synth' 
-  | 'guitar' 
-  | 'strings' 
-  | 'brass';
+  | 'rhodes' 
+  | 'pluck' 
+  | 'pad' 
+  | 'steel_drum';
 
 // Flam values (for chord arpeggiation)
 export type FlamValue = 'off' | '1/4' | '1/8' | '1/16' | '1/32';

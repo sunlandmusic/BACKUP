@@ -19,17 +19,17 @@ export const InstrumentSelector: React.FC<InstrumentSelectorProps> = ({
 }) => {
   // Define available instruments
   const instruments: { type: InstrumentType; label: string }[] = [
-    { type: 'balafon', label: 'Balafon' },
-    { type: 'piano', label: 'Piano' },
-    { type: 'synth', label: 'Synth' },
-    { type: 'guitar', label: 'Guitar' },
-    { type: 'strings', label: 'Strings' },
-    { type: 'brass', label: 'Brass' },
+    { type: 'balafon', label: 'BALAFON' },
+    { type: 'piano', label: 'PIANO' },
+    { type: 'rhodes', label: 'RHODES' },
+    { type: 'pluck', label: 'PLUCK' },
+    { type: 'pad', label: 'PAD' },
+    { type: 'steel_drum', label: 'STEEL DRUM' },
   ];
 
   // Define flam values
   const flamValues: { value: FlamValue; label: string }[] = [
-    { value: 'off', label: 'Off' },
+    { value: 'off', label: 'OFF' },
     { value: '1/32', label: '1/32' },
     { value: '1/16', label: '1/16' },
     { value: '1/8', label: '1/8' },
