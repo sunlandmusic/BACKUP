@@ -20,11 +20,12 @@ let soundObjects: SoundObjects = {};
 let isAudioInitialized = false;
 let clickSound: Audio.Sound | null = null;
 
-// Current instrument type
-let currentInstrument: InstrumentType = 'balafon';
+// Current instrument type - make it mutable
+let currentInstrumentType = 'balafon';
+export const getCurrentInstrument = () => currentInstrumentType;
 
 // Current flam value (for chord arpeggiation)
-let currentFlamValue: FlamValue = '1/16';
+let currentFlamValue: FlamValue = 'off';
 
 // Current BPM for flam synchronization
 let currentBpm: number = 120;
@@ -46,14 +47,67 @@ const RHODES = require('../assets/sounds/SYNTH.mp3');  // Using SYNTH for RHODES
 const PLUCK = require('../assets/sounds/GUITAR.mp3');  // Using GUITAR for PLUCK
 const PAD = require('../assets/sounds/STRINGS.mp3');   // Using STRINGS for PAD
 const STEEL_DRUM = require('../assets/sounds/BRASS.mp3'); // Using BRASS for STEEL_DRUM
-const CLICK = require('../assets/sounds/CLICK.mp3');
+
+// Voice click sounds with explicit asset requires
+const CLICK_SOUNDS = {
+  1: require('/Users/hakimabdulsamad/Desktop/chordcraft-nugesaf/app/assets/click-voice/one.mp3'),
+  2: require('/Users/hakimabdulsamad/Desktop/chordcraft-nugesaf/app/assets/click-voice/two.mp3'),
+  3: require('/Users/hakimabdulsamad/Desktop/chordcraft-nugesaf/app/assets/click-voice/three.mp3'),
+  4: require('/Users/hakimabdulsamad/Desktop/chordcraft-nugesaf/app/assets/click-voice/four.mp3')
+};
+
+// Add a new state variable to track if we're currently playing
+let isCurrentlyPlaying = false;
+
+let initializationPromise: Promise<boolean> | null = null;
+let initializationTimeout: NodeJS.Timeout | null = null;
+
+// Preload sounds for each instrument
+const preloadedSounds: { [key: string]: Audio.Sound } = {};
+
+const getMusicalTimings = (bpm: number) => ({
+  '1/32': 1000 / (bpm / 60 * 32), // ms at current bpm
+  '1/16': 1000 / (bpm / 60 * 16), // ms at current bpm
+  '1/8': 1000 / (bpm / 60 * 8),   // ms at current bpm
+});
+
+// Force reload all audio
+export const forceReloadAudio = async () => {
+  try {
+    logDebug('Force reloading all audio...');
+    
+    // First cleanup existing sounds
+    await cleanup();
+    
+    // Reset state
+    soundObjects = {};
+    isAudioInitialized = false;
+    
+    // Reinitialize
+    await initAudio();
+    
+    logDebug('Force reload complete');
+    return true;
+  } catch (error) {
+    console.error('Error during force reload:', error);
+    return false;
+  }
+};
 
 // Initialize audio
 export const initAudio = async () => {
+  if (isAudioInitialized) {
+    return true;
+  }
+
   try {
+    // Clean up any existing audio resources
+    await cleanup();
+    
+    // Configure audio mode
     await Audio.setAudioModeAsync({
       playsInSilentModeIOS: true,
-      staysActiveInBackground: true,
+      staysActiveInBackground: false,
       shouldDuckAndroid: false,
       interruptionModeIOS: 1,
       interruptionModeAndroid: 1,
@@ -61,199 +115,159 @@ export const initAudio = async () => {
       allowsRecordingIOS: false,
     });
 
-    try {
-      // Load base sound for current instrument
-      const { sound } = await Audio.Sound.createAsync(
-        {
-          balafon: BALAFON,
-          piano: PIANO,
-          rhodes: RHODES,
-          pluck: PLUCK,
-          pad: PAD,
-          steel_drum: STEEL_DRUM,
-        }[currentInstrument],
-        { shouldPlay: false }
-      );
+    // Initialize Tone.js with proper context
+    await Tone.start();
+    const synth = new Tone.Synth().toDestination();
+    await synth.triggerAttackRelease("C4", 0.01); // Tiny sound to initialize audio context
+    synth.dispose();
 
-      // Load click sound
-      const { sound: click } = await Audio.Sound.createAsync(
-        CLICK,
-        { shouldPlay: false }
-      );
-      clickSound = click;
+    isAudioInitialized = true;
+    return true;
 
-      // Store the base sound
-      soundObjects[currentInstrument] = sound;
-      logDebug('Base sound and click loaded successfully');
-      isAudioInitialized = true;
-    } catch (loadError) {
-      console.error('Failed to load sounds:', loadError);
-      throw loadError;
-    }
-  } catch (e) {
-    console.error('Failed to initialize audio:', e);
+  } catch (error) {
+    console.error('Audio initialization failed:', error);
+    await cleanup();
     isAudioInitialized = false;
-    throw e;
+    return false;
   }
 };
 
 // Play a note
 export const playNote = async (midiNote: number) => {
   try {
-    // Get the base sound for the current instrument
-    const baseSound = soundObjects[currentInstrument];
-    if (!baseSound) {
-      console.error('No base sound loaded for current instrument');
-      return;
+    if (!isAudioInitialized) {
+      const initialized = await initAudio();
+      if (!initialized) {
+        throw new Error('Failed to initialize audio');
+      }
     }
 
-    // Create a new sound instance for this note
-    const { sound: noteSound } = await Audio.Sound.createAsync(
-      {
-        balafon: BALAFON,
-        piano: PIANO,
-        rhodes: RHODES,
-        pluck: PLUCK,
-        pad: PAD,
-        steel_drum: STEEL_DRUM,
-      }[currentInstrument],
-      { 
-        shouldPlay: false,
-        volume: 1.0,
-        rate: Math.pow(2, (midiNote - 60) / 12), // Set pitch shift rate during creation
-        shouldCorrectPitch: true,
+    // Create a synth for this note
+    const synth = new Tone.Synth({
+      oscillator: {
+        type: "sine"
+      },
+      envelope: {
+        attack: 0.005,
+        decay: 0.1,
+        sustain: 0.3,
+        release: 1
       }
-    );
+    }).toDestination();
+    
+    // Set volume
+    synth.volume.value = -12;
+    
+    // Play the note using MIDI note number directly
+    await synth.triggerAttackRelease(midiNote, 0.5);
 
-    // Play the sound immediately
-    await noteSound.playAsync();
+    // Clean up after 1 second
+    setTimeout(() => {
+      synth.dispose();
+    }, 1000);
 
-    // Store for cleanup
-    const noteKey = `${currentInstrument}_${midiNote}`;
-    soundObjects[noteKey] = noteSound;
-
-    logDebug(`Playing note ${midiNote} with instrument ${currentInstrument}`);
   } catch (e) {
-    console.error(`Error playing note ${midiNote}:`, e);
+    console.error('Error playing note:', e);
+    isAudioInitialized = false;
+    await initAudio();
   }
 };
 
-// Stop a note
+// Stop a specific note
 export const stopNote = async (midiNote: number) => {
-  try {
-    const noteSound = soundObjects[`${currentInstrument}_${midiNote}`];
-    if (noteSound) {
-      const status = await noteSound.getStatusAsync();
-      if (status.isLoaded && status.isPlaying) {
-        await noteSound.stopAsync();
-        await noteSound.unloadAsync();
-      }
-      delete soundObjects[`${currentInstrument}_${midiNote}`];
-    }
-  } catch (e) {
-    console.error(`Error stopping note ${midiNote}:`, e);
+  const noteKey = `${currentInstrumentType}_${midiNote}`;
+  const noteSound = soundObjects[noteKey];
+  
+  if (noteSound) {
+    // Just remove it from soundObjects - let the timeout handle cleanup
+    delete soundObjects[noteKey];
   }
 };
 
-// Play a chord (multiple notes at once)
+// Play a chord
 export const playChord = async (midiNotes: number[]) => {
   try {
-    // Stop any currently playing notes first
-    await stopChord();
-    
-    // Create all note sounds first
-    const noteSounds = await Promise.all(
-      midiNotes.map(async (midiNote) => {
-        const { sound } = await Audio.Sound.createAsync(
-          {
-            balafon: BALAFON,
-            piano: PIANO,
-            rhodes: RHODES,
-            pluck: PLUCK,
-            pad: PAD,
-            steel_drum: STEEL_DRUM,
-          }[currentInstrument],
-          { 
-            shouldPlay: false,
-            volume: 1.0,
-            rate: Math.pow(2, (midiNote - 60) / 12),
-            shouldCorrectPitch: true,
-          }
-        );
-        return { midiNote, sound };
-      })
-    );
-
-    // Then play them based on flam setting
-    if (currentFlamValue === 'off') {
-      // Play all notes simultaneously
-      await Promise.all(
-        noteSounds.map(async ({ midiNote, sound }) => {
-          const noteKey = `${currentInstrument}_${midiNote}`;
-          soundObjects[noteKey] = sound;
-          await sound.playAsync();
-        })
-      );
-    } else {
-      // Play with flam delay
-      const flamDelay = getFlamDelayMs(currentFlamValue);
-      for (let i = 0; i < noteSounds.length; i++) {
-        const { midiNote, sound } = noteSounds[i];
-        const noteKey = `${currentInstrument}_${midiNote}`;
-        soundObjects[noteKey] = sound;
-        await new Promise<void>(resolve => {
-          setTimeout(async () => {
-            await sound.playAsync();
-            resolve();
-          }, i * flamDelay);
-        });
+    if (!isAudioInitialized) {
+      const initialized = await initAudio();
+      if (!initialized) {
+        throw new Error('Failed to initialize audio');
       }
     }
+
+    // Create a polyphonic synth with specific settings
+    const synth = new Tone.PolySynth(Tone.Synth, {
+      oscillator: {
+        type: "sine"
+      },
+      envelope: {
+        attack: 0.005,
+        decay: 0.1,
+        sustain: 0.3,
+        release: 1
+      }
+    }).toDestination();
+
+    // Set volume
+    synth.volume.value = -12;
+    
+    // Play the chord using MIDI note numbers directly
+    await synth.triggerAttackRelease(midiNotes, 0.5);
+
+    // Clean up after 1 second
+    setTimeout(() => {
+      synth.dispose();
+    }, 1000);
+
   } catch (e) {
     console.error('Error playing chord:', e);
+    isAudioInitialized = false;
+    await initAudio();
   }
 };
 
-// Stop a chord - IMMEDIATELY stop all sounds
+// Keep track of active sounds
+const activeSounds: Audio.Sound[] = [];
+
+// Stop all sounds
+export const stopAllSounds = async () => {
+  const soundsToStop = { ...soundObjects };
+  
+  // Clear sound objects first
+  const baseInstruments = ['balafon', 'piano', 'rhodes', 'pluck', 'pad', 'steel_drum'];
+  Object.keys(soundObjects).forEach(key => {
+    if (!baseInstruments.includes(key) && !key.startsWith('click')) {
+      delete soundObjects[key];
+    }
+  });
+};
+
+// Stop all sounds
 export const stopChord = async () => {
   try {
-    // Stop all playing notes
-    const playingNotes = Object.keys(soundObjects).filter(key => key.includes('_'));
-    const stopPromises = playingNotes.map(async (key) => {
-      const sound = soundObjects[key];
-      if (sound) {
-        try {
-          const status = await sound.getStatusAsync();
-          if (status.isLoaded) {
-            if (status.isPlaying) {
-              await sound.stopAsync();
-            }
-            await sound.unloadAsync();
-          }
-        } catch (error) {
-          console.error(`Error stopping sound ${key}:`, error);
-        }
-        delete soundObjects[key];
-      }
-    });
-    await Promise.all(stopPromises);
+    // Dispose of any existing Tone.js resources
+    Tone.context.dispose();
+    // Create a new context
+    await Tone.start();
+    isAudioInitialized = false;
+    await initAudio();
   } catch (e) {
-    console.error('Error stopping chord:', e);
+    console.error('Error stopping sounds:', e);
   }
 };
 
 // Set the instrument type
 export const setInstrument = (instrument: InstrumentType) => {
-  currentInstrument = instrument;
+  // This function is now a placeholder as we're simplifying to just use balafon
 };
 
 // Get the current instrument
 export const getInstrument = () => {
-  return currentInstrument;
+  return currentInstrumentType;
 };
 
 // Set the flam value
 export const setFlamValue = (flamValue: FlamValue) => {
+  logDebug('Setting flam value to:', flamValue);
   currentFlamValue = flamValue;
 };
 
@@ -272,16 +286,9 @@ export const getBpm = () => {
   return currentBpm;
 };
 
-// Get flam delay in milliseconds based on BPM
-export function getFlamDelayMs(flam: string): number {
-  const msPerBeat = (60 / currentBpm) * 1000;
-  switch (flam) {
-    case '1/32': return msPerBeat / 32; // Small flam: 1/32 of a beat
-    case '1/16': return msPerBeat / 16; // Medium flam: 1/16 of a beat
-    case '1/8': return msPerBeat / 8;   // Large flam: 1/8 of a beat
-    case '1/4': return msPerBeat / 4;   // Extra large flam: 1/4 of a beat
-    default: return 0;
-  }
+// Function to get flam delay in milliseconds - DISABLED
+function getFlamDelay(flamValue: FlamValue): number {
+  return 0; // Always return 0 to disable flam
 }
 
 // Play a progression of chords
@@ -292,30 +299,60 @@ export const playProgression = async (
 ) => {
   // Calculate time per chord in milliseconds
   const timePerChord = 60000 / tempo;
+  let currentStep = 0;
+  let isPlaying = true;
+  let timeoutId: NodeJS.Timeout | null = null;
   
-  // Stop any currently playing notes
-  await stopChord();
-  
-  // Play each chord in sequence
-  chordNotes.forEach((notes, index) => {
-    setTimeout(() => {
-      // Stop previous chord
-      stopChord();
-      
-      // Play current chord
-      playChord(notes);
-      
-      // Call the callback if provided
-      if (onChordChange) {
-        onChordChange(index);
+  // Initialize audio system if needed
+  if (!isAudioInitialized) {
+    await initAudio();
+  }
+
+  // Function to play the next step
+  const playStep = async () => {
+    if (!isPlaying) return;
+
+    try {
+      // Play click sound with current step number
+      logDebug(`Playing step ${currentStep + 1}`);
+      await playClick(currentStep + 1);
+
+      // Play chord if we're at a chord change
+      if (currentStep % 4 === 0) {
+        const chordIndex = Math.floor(currentStep / 4);
+        if (chordIndex < chordNotes.length) {
+          // Stop previous chord
+          await stopChord();
+          
+          // Play current chord
+          await playChord(chordNotes[chordIndex]);
+          
+          // Call the callback if provided
+          if (onChordChange) {
+            onChordChange(chordIndex);
+          }
+        }
       }
-    }, timePerChord * index);
-  });
-  
-  // Stop the last chord after its duration
-  setTimeout(() => {
+
+      // Schedule next step
+      currentStep++;
+      timeoutId = setTimeout(playStep, timePerChord / 4); // Quarter of chord duration for 4 clicks per chord
+    } catch (error) {
+      console.error('Error in playStep:', error);
+    }
+  };
+
+  // Start playing
+  await playStep();
+
+  // Return cleanup function
+  return () => {
+    isPlaying = false;
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
     stopChord();
-  }, timePerChord * chordNotes.length);
+  };
 };
 
 // Convert MIDI note to frequency
@@ -326,70 +363,138 @@ const midiToFrequency = (midiNote: number): number => {
 // Play click sound
 export const playClick = async (step?: number) => {
   try {
-    if (clickSound) {
-      // If step is provided, adjust volume based on whether it's an accented beat
-      if (typeof step === 'number') {
-        const isAccentedBeat = step % 8 === 0;
-        await clickSound.setVolumeAsync(isAccentedBeat ? 1.0 : 0.7);
-      } else {
-        await clickSound.setVolumeAsync(1.0);
-      }
-      await clickSound.setPositionAsync(0);
-      await clickSound.playAsync();
-    } else {
-      // Try to load click sound if it's not loaded
-      const { sound: click } = await Audio.Sound.createAsync(
-        CLICK,
-        { shouldPlay: false }
-      );
-      clickSound = click;
-      await clickSound.playAsync();
+    if (!isAudioInitialized) {
+      logDebug('Audio not initialized, initializing now...');
+      await initAudio();
     }
-  } catch (e) {
-    console.error('Error playing click:', e);
-  }
-};
 
-// Stop all sounds (including click)
-export const stopAllSounds = async (): Promise<void> => {
-  try {
-    // Stop all playing notes
-    await stopChord();
+    logDebug('Attempting to play click sound...');
+    logDebug('Current step:', step);
     
-    // Stop click sound
-    if (clickSound) {
-      const status = await clickSound.getStatusAsync();
-      if (status.isLoaded && status.isPlaying) {
-        await clickSound.stopAsync();
-      }
+    // Determine which click sound to play based on the step
+    const clickNumber = step ? ((step - 1) % 4) + 1 : 1;
+    logDebug(`Selected click number: ${clickNumber}`);
+    
+    // Get the sound file
+    const soundFile = CLICK_SOUNDS[clickNumber as 1 | 2 | 3 | 4];
+    if (!soundFile) {
+      throw new Error(`No sound file found for click ${clickNumber}`);
     }
+    logDebug('Sound file:', soundFile);
+
+    // Create a new instance for this click
+    logDebug('Creating new sound instance...');
+    const { sound: newClick } = await Audio.Sound.createAsync(
+      soundFile,
+      { 
+        shouldPlay: false,
+        volume: typeof step === 'number' ? (step % 4 === 1 ? 1.0 : 0.7) : 1.0,
+        progressUpdateIntervalMillis: 50
+      }
+    );
+
+    // Verify the sound loaded correctly
+    const status = await newClick.getStatusAsync();
+    logDebug('New click sound status:', status);
+    if (!status.isLoaded) {
+      throw new Error('Click sound failed to load properly');
+    }
+
+    // Play the click immediately
+    logDebug(`Playing voice click ${clickNumber}...`);
+    const playResult = await newClick.playAsync();
+    logDebug('Play result:', playResult);
+
+    // Clean up this instance after it finishes playing
+    setTimeout(async () => {
+      try {
+        await newClick.unloadAsync();
+      } catch (e) {
+        console.error('Error cleaning up click sound:', e);
+      }
+    }, 1000);
+
   } catch (e) {
-    console.error('Error stopping all sounds:', e);
+    console.error('Error playing voice click:', e);
+    if (e instanceof Error) {
+      logDebug('Error details:', {
+        message: e.message,
+        stack: e.stack,
+        name: e.name
+      });
+    }
   }
 };
 
 // Clean up resources
 export const cleanup = async (): Promise<void> => {
   try {
-    await stopAllSounds();
-    
-    // Unload click sound
-    if (clickSound) {
-      await clickSound.unloadAsync();
-      clickSound = null;
-    }
-    
-    // Unload all other sounds
-    const unloadPromises = Object.values(soundObjects).map(async (sound) => {
-      if (sound) {
-        await sound.unloadAsync();
-      }
-    });
-    await Promise.all(unloadPromises);
-    soundObjects = {};
-    
+    await stopChord();
     isAudioInitialized = false;
   } catch (e) {
     console.error('Error during cleanup:', e);
+  }
+};
+
+// Test click sounds
+export const testClickSounds = async () => {
+  try {
+    logDebug('Testing click sounds...');
+    
+    // Force reload audio first
+    await forceReloadAudio();
+    
+    // Test each click sound
+    for (let i = 1; i <= 4; i++) {
+      logDebug(`Testing click sound ${i}...`);
+      await playClick(i);
+      await new Promise(resolve => setTimeout(resolve, 500)); // Wait between clicks
+    }
+    
+    logDebug('Click sound test complete');
+    return true;
+  } catch (error) {
+    console.error('Error testing click sounds:', error);
+    return false;
+  }
+};
+
+// Test a single click sound
+export const testSingleClick = async (number: 1 | 2 | 3 | 4) => {
+  try {
+    logDebug(`Testing click sound ${number}...`);
+    
+    // Get the sound file
+    const soundFile = CLICK_SOUNDS[number];
+    if (!soundFile) {
+      throw new Error(`No sound file found for click ${number}`);
+    }
+    
+    // Create a new sound instance
+    const { sound } = await Audio.Sound.createAsync(
+      soundFile,
+      { 
+        shouldPlay: false,
+        volume: 1.0
+      }
+    );
+    
+    // Verify it loaded
+    const status = await sound.getStatusAsync();
+    logDebug('Sound status:', status);
+    
+    // Play it
+    logDebug('Playing sound...');
+    await sound.playAsync();
+    
+    // Clean up after 1 second
+    setTimeout(async () => {
+      await sound.unloadAsync();
+    }, 1000);
+    
+    return true;
+  } catch (error) {
+    console.error('Error testing click sound:', error);
+    return false;
   }
 };

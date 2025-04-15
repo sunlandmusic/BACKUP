@@ -31,7 +31,7 @@ interface ChordState {
   currentFlamValue: FlamValue;
   
   // Saved items
-  savedChords: Chord[];
+  savedChords: (Chord | null)[];
   savedProgressions: ChordProgression[];
   savedSongs: Song[];
   savedSections: Section[];
@@ -42,7 +42,8 @@ interface ChordState {
   
   // Actions - Chord management
   setCurrentChord: (chord: Chord | null) => void;
-  saveChord: (chord: Chord, index: number) => void;
+  saveChord: (chord: Chord | null, index: number) => void;
+  setSavedChords: (chords: (Chord | null)[]) => void;
   
   // Actions - Key and mode
   setCurrentKey: (key: NoteName) => void;
@@ -92,8 +93,8 @@ export const useChordStore = create<ChordState>()(
       
       currentKey: 'C',
       currentMode: 'major',
-      currentInstrument: 'balafon',
-      currentFlamValue: '1/16',
+      currentInstrument: 'piano',
+      currentFlamValue: 'off',
       
       savedChords: [],
       savedProgressions: [],
@@ -114,14 +115,21 @@ export const useChordStore = create<ChordState>()(
         
         // Ensure the array is large enough
         while (newSavedChords.length <= index) {
-          newSavedChords.push(createChord('C', 'major'));
+          newSavedChords.push(null);
         }
         
+        // Simply set the chord (or null for deletion)
         newSavedChords[index] = chord;
         
         // Trim array to max size
         const trimmedChords = newSavedChords.slice(0, MAX_SAVED_CHORDS);
         
+        set({ savedChords: trimmedChords });
+      },
+      
+      setSavedChords: (chords) => {
+        // Ensure we don't exceed max saved chords
+        const trimmedChords = chords.slice(0, MAX_SAVED_CHORDS);
         set({ savedChords: trimmedChords });
       },
       
@@ -298,7 +306,12 @@ export const useChordStore = create<ChordState>()(
           id: nanoid(),
           name: sectionName,
           progressionId,
-          repeat: 1
+          repeat: 1,
+          steps: [],
+          settings: {
+            bpm: 120,
+            bars: 4
+          }
         };
         
         // Add section and progression to song

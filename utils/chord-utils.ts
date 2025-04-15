@@ -89,8 +89,7 @@ export const createChord = (
     root,
     type,
     notes: getChordNotes(root, type, octave, bassNote),
-    bassNote,
-    modifier: null
+    bassNote
   };
 };
 
@@ -128,23 +127,26 @@ export const getDiatonicChords = (key: NoteName, mode: MusicMode): Chord[] => {
   const scaleNotes = getScaleNotes(key, mode);
   const chords: Chord[] = [];
   
-  // Chord qualities for different modes
-  const chordQualities: Record<MusicMode, ChordType[]> = {
-    off: [],
-    major: ['major', 'minor', 'minor', 'major', 'dominant7', 'minor', 'diminished'],
-    minor: ['minor', 'diminished', 'major', 'minor', 'minor', 'major', 'major'],
-    ionian: ['major', 'minor', 'minor', 'major', 'dominant7', 'minor', 'diminished'],
-    dorian: ['minor', 'minor', 'major', 'dominant7', 'minor', 'diminished', 'major'],
-    phrygian: ['minor', 'major', 'dominant7', 'minor', 'diminished', 'major', 'minor'],
-    lydian: ['major', 'dominant7', 'minor', 'diminished', 'major', 'minor', 'minor'],
-    mixolydian: ['dominant7', 'minor', 'diminished', 'major', 'minor', 'minor', 'major'],
-    aeolian: ['minor', 'diminished', 'major', 'minor', 'minor', 'major', 'dominant7'],
-    locrian: ['diminished', 'major', 'minor', 'minor', 'major', 'dominant7', 'minor']
-  };
-  
-  // Create chords for each scale degree
+  // For each scale degree
   for (let i = 0; i < scaleNotes.length; i++) {
-    chords.push(createChord(scaleNotes[i], chordQualities[mode][i]));
+    const root = scaleNotes[i];
+    
+    // Try all possible chord types
+    const allChordTypes: ChordType[] = [
+      'major', 'minor', 'diminished', 'augmented',
+      'dominant7', 'major7', 'minor7', 'major9', 'minor9',
+      'dominant9', 'sus2', 'sus4', 'add9', 'm7b5', 'm11',
+      'dim', 'dim7'
+    ];
+    
+    // Test each chord type
+    allChordTypes.forEach(type => {
+      const chord = createChord(root, type);
+      // Only add the chord if all its notes are in the scale
+      if (isChordDiatonic(chord, key, mode)) {
+        chords.push(chord);
+      }
+    });
   }
   
   return chords;
@@ -154,12 +156,17 @@ export const getDiatonicChords = (key: NoteName, mode: MusicMode): Chord[] => {
 export const isChordDiatonic = (chord: Chord, key: NoteName, mode: MusicMode): boolean => {
   if (mode === 'off') return true;
   
-  const diatonicChords = getDiatonicChords(key, mode);
+  // Get the scale notes
+  const scaleNotes = getScaleNotes(key, mode);
   
-  // Check if the chord's root and type match any diatonic chord
-  return diatonicChords.some(diatonicChord => 
-    diatonicChord.root === chord.root && diatonicChord.type === chord.type
-  );
+  // Get all notes in the chord, normalized to a single octave
+  const chordNotes = chord.notes.map(note => getNoteNameFromMidi(note));
+  
+  // Check if all chord notes are in the scale, ignoring octave
+  return chordNotes.every(note => {
+    const normalizedNote = note;
+    return scaleNotes.includes(normalizedNote);
+  });
 };
 
 // Check if a chord type is diatonic to the current key and mode for any root

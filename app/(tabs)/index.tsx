@@ -5,7 +5,7 @@ import { colors } from "@/constants/colors";
 import { useChordStore } from "@/stores/chord-store";
 import { Chord, ChordType, NoteName, noteNames } from "@/types/music";
 import { playChord, stopChord, initAudio } from "@/utils/audio-utils";
-import { createChord, getScaleNotes, getMidiNote } from "@/utils/chord-utils";
+import { createChord, getScaleNotes, getMidiNote, getDiatonicChords } from "@/utils/chord-utils";
 import { Eye, Play } from "lucide-react-native";
 import { HorizontalPiano } from "@/components/HorizontalPiano";
 import { SavedChordButton } from "@/components/SavedChordButton";
@@ -21,7 +21,8 @@ export default function ChordComposeScreen() {
     currentKey,
     setCurrentKey,
     currentMode,
-    setCurrentMode
+    setCurrentMode,
+    setSavedChords
   } = useChordStore();
   
   const [selectedChordType, setSelectedChordType] = useState<ChordType | null>(null);
@@ -43,9 +44,6 @@ export default function ChordComposeScreen() {
   const [savedChordPage, setSavedChordPage] = useState(0);
   const savedChordsPerPage = 8;
   const maxSavedChords = 32; // Limit to 32 saved chords (4 pages of 8)
-  
-  // For save mode
-  const [saveMode, setSaveMode] = useState(false);
   
   // For tracking active saved chord
   const [activeSavedChordIndex, setActiveSavedChordIndex] = useState<number | null>(null);
@@ -71,6 +69,9 @@ export default function ChordComposeScreen() {
   const [editMode, setEditMode] = useState<'none' | 'delete' | 'copy' | 'paste'>('none');
   const [copiedChord, setCopiedChord] = useState<Chord | null>(null);
   
+  // Add state for tracking the currently pressed note
+  const [pressedNote, setPressedNote] = useState<NoteName | null>(null);
+  
   // Initialize audio on component mount
   useEffect(() => {
     const setupAudio = async () => {
@@ -82,7 +83,7 @@ export default function ChordComposeScreen() {
   
   // Update scale notes when key or mode changes
   useEffect(() => {
-    setScaleNotes(getScaleNotes(currentKey, currentMode));
+    setScaleNotes(currentMode === 'off' ? [] : getScaleNotes(currentKey, currentMode));
   }, [currentKey, currentMode]);
   
   // Cleanup effect to stop any playing sounds when component unmounts
@@ -116,6 +117,7 @@ export default function ChordComposeScreen() {
   
   // Handle note press on piano
   const handleNotePress = (noteName: NoteName, midiNote: number) => {
+    setPressedNote(noteName);
     if (selectedChordType) {
       // Create chord based on selected type and root note
       let bassNote: NoteName | undefined;
@@ -163,6 +165,7 @@ export default function ChordComposeScreen() {
   
   // Handle note release on piano - stop all sounds
   const handleNoteRelease = () => {
+    setPressedNote(null);
     stopChord();
     setTempHighlightedChord(null);
     // Also clear the current chord when releasing the note
@@ -296,68 +299,46 @@ export default function ChordComposeScreen() {
 
   // Handle saved chord press with edit modes
   const handleSavedChordPress = (index: number) => {
-    if (saveMode) {
-      handleSaveCurrentChord(index);
-      setSaveMode(false);
-      return;
-    }
-
     if (editMode === 'delete') {
-      saveChord(undefined, index);
+      saveChord(null, index);
       setEditMode('none');
+      setIsEditPopupVisible(false);
       return;
     }
 
     if (editMode === 'copy') {
-      const chord = savedChords[index];
-      if (chord) {
-        setCopiedChord(chord);
-        setEditMode('paste');
+      const chordToCopy = savedChords[index];
+      if (chordToCopy) {
+        setCopiedChord(chordToCopy);
       }
+      setEditMode('none');
+      setIsEditPopupVisible(false);
       return;
     }
 
     if (editMode === 'paste' && copiedChord) {
       saveChord(copiedChord, index);
       setEditMode('none');
-      setCopiedChord(null);
+      setIsEditPopupVisible(false);
       return;
     }
 
-    // Normal chord press behavior
-    setPressedChordIndex(index);
-    if (savedChords[index]) {
-      const chord = savedChords[index];
-      if (chord) {
-        setCurrentChord(chord);
-        playChord(chord.notes);
-        setActiveSavedChordIndex(index);
-      }
+    // Regular chord playback
+    const chord = savedChords[index];
+    if (chord) {
+      setCurrentChord(chord);
+      playChord(chord.notes);
+      setActiveSavedChordIndex(index);
+      isChordButtonPressedRef.current = true;
     }
   };
 
   // Handle saved chord release
   const handleSavedChordRelease = () => {
-    setPressedChordIndex(null);
     stopChord();
-    setTempHighlightedChord(null);
     setCurrentChord(null);
     setActiveSavedChordIndex(null);
-  };
-
-  // Handle saving current chord
-  const handleSaveCurrentChord = (index: number) => {
-    // Use either the current chord or the last played chord, whichever is available
-    const chordToSave = currentChord || lastPlayedChord;
-    
-    if (!chordToSave || index >= maxSavedChords) return;
-    saveChord(chordToSave, index);
-    setSaveMode(false); // Exit save mode after saving
-  };
-
-  // Toggle save mode
-  const toggleSaveMode = () => {
-    setSaveMode(!saveMode);
+    isChordButtonPressedRef.current = false;
   };
 
   // Get color for saved chord button
@@ -380,8 +361,8 @@ export default function ChordComposeScreen() {
       case 'dominant9': return colors.chord['9']; // Using '9' from colors instead of 'dominant9'
       case 'sus2': return colors.chord.sus2;
       case 'sus4': return colors.chord.sus4;
-      case 'add9': return colors.chord.add9;
-      case 'm7b5': return colors.chord.m7b5;
+      case 'add9': return colors.chord.user;
+      case 'm7b5': return colors.chord.user;
       case 'm11': return colors.chord.m11;
       case 'dim': return colors.chord.dim;
       case 'dim7': return colors.chord.dim7;
@@ -451,27 +432,27 @@ export default function ChordComposeScreen() {
       { type: 'major' as ChordType, label: 'MAJ', color: colors.chord.major },
       { type: 'major7' as ChordType, label: 'MAJ7', color: colors.chord.major7 },
       { type: 'major9' as ChordType, label: 'MAJ9', color: colors.chord.major9 },
-      { type: 'dominant7' as ChordType, label: '7', color: colors.chord.dominant7 },
+      { type: 'dominant7' as ChordType, label: '7', color: colors.chord.major },
     ],
     // Row 2
     [
       { type: 'minor' as ChordType, label: 'MIN', color: colors.chord.minor },
       { type: 'minor7' as ChordType, label: 'MIN7', color: colors.chord.minor7 },
       { type: 'minor9' as ChordType, label: 'MIN9', color: colors.chord.minor9 },
-      { type: 'dominant9' as ChordType, label: '9', color: colors.chord['9'] }, // Using '9' from colors instead of 'dominant9'
+      { type: 'dominant9' as ChordType, label: '9', color: colors.chord.minor9 },
     ],
     // Row 3
     [
       { type: 'sus2' as ChordType, label: 'SUS2', color: colors.chord.sus2 },
       { type: 'sus4' as ChordType, label: 'SUS4', color: colors.chord.sus4 },
-      { type: 'diminished' as ChordType, label: 'DIM', color: colors.chord.dim },
+      { type: 'diminished' as ChordType, label: 'DIM', color: colors.chord.diminished },
       { type: 'dim7' as ChordType, label: 'DIM7', color: colors.chord.dim7 },
     ],
     // Row 4
     [
-      { type: 'm11' as ChordType, label: 'M11', color: colors.chord.m11 },
-      { type: 'm7b5' as ChordType, label: 'm7b5', color: colors.chord.m7b5 },
-      { type: 'add9' as ChordType, label: 'ADD9', color: colors.chord.add9 },
+      { type: 'm11' as ChordType, label: 'm11', color: colors.chord.m11 },
+      { type: 'm7b5' as ChordType, label: 'm7b5', color: colors.chord.user },
+      { type: 'add9' as ChordType, label: 'ADD9', color: colors.chord.user },
       { type: 'user' as ChordType, label: 'USER', color: colors.chord.user },
     ],
     // Row 5 - Bass offset buttons
@@ -535,15 +516,26 @@ export default function ChordComposeScreen() {
                         ('bassOffset' in item && selectedBassOffset === item.bassOffset) ||
                         (!('bassOffset' in item) && selectedChordType === item.type) 
                           ? styles.selectedChordTypeButton 
+                          : null,
+                        // Add orange background if the chord type matches the current key and mode
+                        // AND a note is currently being pressed
+                        (!('bassOffset' in item) && (
+                          // Get the diatonic chords for the current key and mode
+                          getDiatonicChords(currentKey, currentMode).some((chord: Chord) => 
+                            chord.root === pressedNote && chord.type === item.type
+                          )
+                        ))
+                          ? { backgroundColor: '#FFA500' }
                           : null
                       ]}
                       onPressIn={() => handleChordTypePress(item.type, item.label, 'bassOffset' in item ? item.bassOffset : undefined)}
                     >
                       <Text style={[
                         styles.chordTypeText,
-                        // Apply black text color for all except m11, USER, and BASS buttons
-                        (item.label === 'M11' || item.label === 'USER' || item.label.includes('BASS') || 
-                         item.label === 'MIN' || item.label === 'MIN7' || item.label === 'MIN9') 
+                        // Apply black text color for all except m11, USER, BASS buttons, m7b5, and ADD9
+                        (item.label === 'm11' || item.label === 'USER' || item.label.includes('BASS') || 
+                         item.label === 'MIN' || item.label === 'MIN7' || item.label === 'MIN9' ||
+                         item.label === 'm7b5' || item.label === 'ADD9' || item.label === '9') 
                           ? styles.whiteChordTypeText 
                           : styles.blackChordTypeText
                       ]}>
@@ -617,12 +609,12 @@ export default function ChordComposeScreen() {
           {/* Navigation arrows and saved chord buttons */}
           <View style={styles.savedChordsContainer}>
             <View style={styles.savedChordsRow}>
-              {/* Save button */}
+              {/* Edit button (moved to save button's position) */}
               <Pressable 
-                style={[styles.saveButton, saveMode && styles.saveButtonActive]}
-                onPress={toggleSaveMode}
+                style={[styles.saveButton]}
+                onPress={handleEditPress}
               >
-                <Text style={styles.saveButtonText}>S</Text>
+                <Text style={styles.saveButtonText}>⋮</Text>
               </Pressable>
 
               {/* Left arrow button */}
@@ -655,11 +647,13 @@ export default function ChordComposeScreen() {
                       color={getSavedChordColor(chordIndex)}
                       onPress={() => handleSavedChordPress(chordIndex)}
                       onPressOut={handleSavedChordRelease}
-                      onLongPress={() => handleSaveCurrentChord(chordIndex)}
+                      onLongPress={() => {
+                        if (currentChord) {
+                          saveChord(currentChord, chordIndex);
+                        }
+                      }}
                       index={chordIndex + 1}
                       chord={chord}
-                      saveMode={saveMode}
-                      isHighlighted={isActive}
                     />
                   );
                 })}
@@ -681,14 +675,6 @@ export default function ChordComposeScreen() {
                     fill={savedChordPage >= Math.ceil(maxSavedChords / savedChordsPerPage) - 1 ? colors.textMuted : colors.textOffWhite}
                   />
                 </View>
-              </Pressable>
-
-              {/* Edit button */}
-              <Pressable 
-                style={[styles.editButton]}
-                onPress={handleEditPress}
-              >
-                <Text style={styles.editButtonText}>⋮</Text>
               </Pressable>
             </View>
           </View>
@@ -783,12 +769,35 @@ const styles = StyleSheet.create({
     marginBottom: 8, // Space between rows
   },
   chordTypeButton: {
-    width: 78, // Updated to W 78 as requested
-    height: 48, // H 48 as requested
-    borderRadius: 4,
+    width: 78, // Restored original width
+    height: 48, // Restored original height
     justifyContent: 'center',
     alignItems: 'center',
-    marginHorizontal: 2, // This gives spacing between buttons
+    borderRadius: 4, // Restored original border radius
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginHorizontal: 2,
+  },
+  chordTypeButtonSelected: {
+    backgroundColor: colors.background,
+    borderColor: colors.primary,
+    borderWidth: 2,
+  },
+  chordTypeButtonText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  chordTypeButtonTextSelected: {
+    color: colors.primary,
+  },
+  // Add specific styles for 9 and 7 buttons
+  chordTypeButton9: {
+    backgroundColor: colors.chord.user, // Purple color to match its row
+  },
+  chordTypeButton7: {
+    backgroundColor: colors.chord.major, // Green color to match its row
   },
   selectedChordTypeButton: {
     borderWidth: 2,
@@ -869,46 +878,45 @@ const styles = StyleSheet.create({
     width: '100%',
     marginTop: 4,
     position: 'relative',
-    marginLeft: -37, // Changed from -30 to -37 to move 7 pixels to the left
+    marginLeft: -30, // Restore original value
   },
   savedChordsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: 65, // Changed from 55 to 65 to move 10 pixels to the right
+    paddingLeft: 55, // Keep original padding
   },
   savedChordNavButton: {
     width: 36,
     height: 36,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 0,
-    marginRight: 10,
+    marginRight: 7, // Add space to the right
   },
   saveButton: {
-    width: 30,
-    height: 48,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: colors.buttonGrey,
-    borderRadius: 4,
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: -90,
-    marginRight: 0,
+    marginRight: 15,
+    paddingTop: 4,  // Add padding to move dots down
   },
   saveButtonActive: {
-    borderWidth: 2,
-    borderColor: colors.error,
+    backgroundColor: colors.error,
   },
   saveButtonText: {
-    color: '#8B0000',  // DarkRed - same as delete button
-    fontSize: 14,
-    fontWeight: 'bold',
+    color: '#8B0000',  // DarkRed
+    fontSize: 28,  // Increased from 20 to 28
+    fontWeight: '900',  // Changed from 'bold' to '900' for extra boldness
   },
   // Container for saved chord buttons to align them properly
   savedChordButtonsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     width: 335,
-    marginLeft: -5,
+    marginLeft: 5, // Changed from -5 to 5 to move everything right by 10px
     gap: 8,
   },
   arrowCircle: {
@@ -986,15 +994,15 @@ const styles = StyleSheet.create({
     height: 36,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 270, // Changed from 170 to 270 to move 100 pixels to the right
+    marginLeft: 278, // Changed from 279 to 278 to move left by 1px
   },
   minusButtonLongPressed: {
     backgroundColor: colors.error,
   },
   editPopup: {
     position: 'absolute',
-    right: 100,
-    top: '50%',
+    left: 50,
+    bottom: 120, // Increased to move it higher up
     backgroundColor: colors.background,
     borderRadius: 8,
     padding: 10,
@@ -1005,6 +1013,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
+    zIndex: 1000,
+    minHeight: 100, // Added to ensure consistent height
+    minWidth: 120, // Added to ensure consistent width
   },
   editPopupButton: {
     paddingVertical: 10,
@@ -1018,5 +1029,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     textAlign: 'center',
+  },
+  buttonsGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    transform: [{ translateX: 10 }], // Move the entire group right by 10px
   },
 });

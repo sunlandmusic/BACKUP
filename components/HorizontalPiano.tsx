@@ -187,6 +187,10 @@ export const HorizontalPiano: React.FC<HorizontalPianoProps> = ({
           const isHighlighted = isNoteHighlighted(midiNote);
           const isRoot = isRootNote(noteIndex);
           const isInScale = isNoteInScale(noteIndex);
+          const noteName = noteNames[noteIndex];
+          
+          // Use the scaleNotes prop to determine if the note is in the current scale
+          const isInCurrentScale = scaleNotes.includes(noteName);
           
           return (
             <Pressable
@@ -195,16 +199,20 @@ export const HorizontalPiano: React.FC<HorizontalPianoProps> = ({
                 styles.whiteKey,
                 isPressed && styles.whiteKeyPressed,
                 isHighlighted && (isRoot ? styles.whiteKeyRootHighlighted : styles.whiteKeyHighlighted),
-                isInScale && styles.whiteKeyInScale
+                isInCurrentScale && styles.whiteKeyInScale
               ]}
               onPressIn={() => handleKeyPress(octave, noteIndex)}
               onPressOut={() => handleKeyRelease(octave, noteIndex)}
-              // Add data attribute for web
               {...(Platform.OS === 'web' ? { 'data-key-id': midiNote.toString() } : {})}
             >
-              <Text style={styles.keyLabel}>
-                {noteNames[noteIndex]}
-              </Text>
+              <View style={[
+                styles.whiteKeyInner,
+                isInCurrentScale && styles.whiteKeyInnerInScale
+              ]}>
+                <Text style={styles.keyLabel}>
+                  {noteName}
+                </Text>
+              </View>
             </Pressable>
           );
         })}
@@ -223,7 +231,6 @@ export const HorizontalPiano: React.FC<HorizontalPianoProps> = ({
           ]}
           onPressIn={() => handleKeyPress(octave, 1)}
           onPressOut={() => handleKeyRelease(octave, 1)}
-          // Add data attribute for web
           {...(Platform.OS === 'web' ? { 'data-key-id': getMidiNote(octave, 1).toString() } : {})}
         >
           <Text style={styles.blackKeyLabel}>C#</Text>
@@ -240,7 +247,6 @@ export const HorizontalPiano: React.FC<HorizontalPianoProps> = ({
           ]}
           onPressIn={() => handleKeyPress(octave, 3)}
           onPressOut={() => handleKeyRelease(octave, 3)}
-          // Add data attribute for web
           {...(Platform.OS === 'web' ? { 'data-key-id': getMidiNote(octave, 3).toString() } : {})}
         >
           <Text style={styles.blackKeyLabel}>D#</Text>
@@ -257,7 +263,6 @@ export const HorizontalPiano: React.FC<HorizontalPianoProps> = ({
           ]}
           onPressIn={() => handleKeyPress(octave, 6)}
           onPressOut={() => handleKeyRelease(octave, 6)}
-          // Add data attribute for web
           {...(Platform.OS === 'web' ? { 'data-key-id': getMidiNote(octave, 6).toString() } : {})}
         >
           <Text style={styles.blackKeyLabel}>F#</Text>
@@ -274,7 +279,6 @@ export const HorizontalPiano: React.FC<HorizontalPianoProps> = ({
           ]}
           onPressIn={() => handleKeyPress(octave, 8)}
           onPressOut={() => handleKeyRelease(octave, 8)}
-          // Add data attribute for web
           {...(Platform.OS === 'web' ? { 'data-key-id': getMidiNote(octave, 8).toString() } : {})}
         >
           <Text style={styles.blackKeyLabel}>G#</Text>
@@ -291,7 +295,6 @@ export const HorizontalPiano: React.FC<HorizontalPianoProps> = ({
           ]}
           onPressIn={() => handleKeyPress(octave, 10)}
           onPressOut={() => handleKeyRelease(octave, 10)}
-          // Add data attribute for web
           {...(Platform.OS === 'web' ? { 'data-key-id': getMidiNote(octave, 10).toString() } : {})}
         >
           <Text style={styles.blackKeyLabel}>A#</Text>
@@ -306,29 +309,32 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     position: 'relative',
-    backgroundColor: '#333333',
+    backgroundColor: '#222222',
+    overflow: 'visible',
   },
   whiteKeysRow: {
     flexDirection: 'row',
     position: 'absolute',
     zIndex: 1,
-    top: 100,
-    left: -10,
+    top: 101,
+    left: 0,
+    width: '100%',
+    justifyContent: 'space-between',
   },
   whiteKey: {
     width: 39,
     height: 100,
     borderRadius: 15,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#999999',
     borderWidth: 1,
     borderColor: '#333333',
     justifyContent: 'flex-end',
     alignItems: 'center',
-    marginHorizontal: 6,
+    marginHorizontal: 0,
     position: 'relative',
   },
   whiteKeyPressed: {
-    backgroundColor: '#E0E0E0',
+    backgroundColor: '#777777',
   },
   whiteKeyHighlighted: {
     backgroundColor: colors.piano.highlight,
@@ -337,8 +343,21 @@ const styles = StyleSheet.create({
     backgroundColor: colors.chord.user, // Changed to match USER button color (dark purple)
   },
   whiteKeyInScale: {
-    borderColor: '#000000',
-    borderWidth: 2,
+    borderColor: '#FFA500', // Orange color
+    borderWidth: 4, // Increased from 3 to 4 pixels (25% increase)
+  },
+  whiteKeyInner: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#808080',
+    borderRadius: 13, // Slightly smaller than the outer border radius
+    margin: 0, // Removed margin to make borders flush
+  },
+  whiteKeyInnerInScale: {
+    borderWidth: 2, // Slightly thicker black border when in scale
   },
   blackKeysRow: {
     position: 'absolute',
@@ -357,22 +376,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingBottom: 5,
     borderWidth: 1,
-    borderColor: '#FFFFFF',
+    borderColor: colors.primary,
   },
   blackKeyPosition1: {
-    left: 15, // C#
+    left: 25, // C#
   },
   blackKeyPosition2: {
-    left: 70, // D#
+    left: 76, // D#
   },
   blackKeyPosition3: {
-    left: 180, // F#
+    left: 177, // F#
   },
   blackKeyPosition4: {
-    left: 235, // G#
+    left: 228, // G#
   },
   blackKeyPosition5: {
-    left: 290, // A#
+    left: 279, // A#
   },
   blackKeyPressed: {
     backgroundColor: '#1D1D1D',
@@ -384,8 +403,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.chord.user, // Changed to match USER button color (dark purple)
   },
   blackKeyInScale: {
-    borderColor: colors.primary,
-    borderWidth: 2,
+    borderColor: '#FFA500', // Orange color
+    borderWidth: 1, // Regular border width
   },
   keyLabel: {
     color: '#000000',

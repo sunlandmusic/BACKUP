@@ -10,7 +10,7 @@ interface SavedChordButtonProps {
   onPressOut: () => void;
   onLongPress?: () => void;
   index: number;
-  chord?: Chord;
+  chord: Chord | null;
   saveMode?: boolean;
   isHighlighted?: boolean;
   isCurrentlyPlaying?: boolean;
@@ -101,8 +101,8 @@ export const SavedChordButton: React.FC<SavedChordButtonProps> = ({
   return (
     <Pressable
       style={[
-        styles.button, 
-        { backgroundColor: color },
+        styles.button,
+        { backgroundColor: chord ? color : colors.buttonGrey },
         saveMode && styles.saveButton,
         isHighlighted && styles.highlightedButton,
         isCurrentlyPlaying && styles.currentlyPlayingButton
@@ -128,7 +128,7 @@ export const SavedChordButton: React.FC<SavedChordButtonProps> = ({
 const styles = StyleSheet.create({
   button: {
     width: 68,
-    height: 48,
+    height: 36,
     borderRadius: 4,
     justifyContent: 'center',
     alignItems: 'center',

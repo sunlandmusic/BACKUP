@@ -9,6 +9,7 @@ interface ChordTypeButtonProps {
   onPress: () => void;
   isSelected?: boolean;
   isHighlighted?: boolean;
+  isMatchingKeyMode?: boolean;
   customColor?: string;
 }
 
@@ -18,6 +19,7 @@ export const ChordTypeButton: React.FC<ChordTypeButtonProps> = ({
   onPress,
   isSelected = false,
   isHighlighted = false,
+  isMatchingKeyMode = false,
   customColor
 }) => {
   // Get background color based on chord type
@@ -40,6 +42,10 @@ export const ChordTypeButton: React.FC<ChordTypeButtonProps> = ({
 
   // Determine text color based on chord type
   const getTextColor = () => {
+    if (isMatchingKeyMode) {
+      return '#FFA500'; // Orange color for matching key/mode
+    }
+    
     // Only m11, user, min, min7, and min9 should have white text
     if (type === 'm11' || type === 'user' || 
         type === 'min' || type === 'min7' || type === 'min9' ||

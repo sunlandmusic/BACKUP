@@ -41,7 +41,7 @@ const UserIcon = () => (
 
 const ProgressionIcon = () => (
   <View style={styles.customIcon}>
-    <Text style={styles.iconText}>🎵</Text>
+    <Text style={[styles.iconText, { color: 'white' }]}>🎵</Text>
   </View>
 );
 
@@ -90,14 +90,14 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({
       route: '/(tabs)/sounds'
     },
     { 
-      label: 'USER', 
-      icon: <UserIcon />,
-      route: '/(tabs)/user-chord'
-    },
-    { 
       label: 'PROG', 
       icon: <ProgressionIcon />,
       route: '/(tabs)/progressions'
+    },
+    { 
+      label: 'USER', 
+      icon: <UserIcon />,
+      route: '/(tabs)/user-chord'
     },
     { 
       label: 'SONG', 
@@ -108,6 +108,11 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({
       label: 'UTILITY', 
       icon: <UtilityIcon />,
       route: '/(tabs)/utility'
+    },
+    { 
+      label: 'PIANO XL', 
+      icon: <PianoIcon />,
+      route: '/(tabs)/16keys'
     },
   ];
   

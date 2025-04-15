@@ -10,25 +10,26 @@ export const noteNames: NoteName[] = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G',
 export type ChordType = 
   | 'major' 
   | 'minor' 
-  | 'diminished' 
+  | 'dim' 
   | 'augmented' 
-  | 'dominant7' 
+  | '7' 
   | 'major7' 
   | 'minor7' 
   | 'major9' 
   | 'minor9' 
-  | 'dominant9' 
+  | '9' 
   | 'sus2' 
   | 'sus4' 
   | 'add9' 
   | 'm7b5' 
   | 'm11' 
-  | 'dim' 
   | 'dim7' 
+  | '6'
   | 'user';
 
 // Chord object
 export interface Chord {
+  id: string;
   root: NoteName;
   type: ChordType;
   notes: number[]; // MIDI note numbers
@@ -61,7 +62,7 @@ export type InstrumentType =
   | 'steel_drum';
 
 // Flam values (for chord arpeggiation)
-export type FlamValue = 'off' | '1/4' | '1/8' | '1/16' | '1/32';
+export type FlamValue = 'off' | '1/32' | '1/16' | '1/8';
 
 // Time signature
 export type TimeSignature = [number, number]; // [beats per measure, beat unit]

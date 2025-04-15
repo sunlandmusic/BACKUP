@@ -67,6 +67,13 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <Settings size={22} color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="16keys"
+        options={{
+          title: '16 KEYS',
+          tabBarLabel: '16 KEYS',
+        }}
+      />
     </Tabs>
   );
 }

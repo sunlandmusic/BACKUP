@@ -41,31 +41,28 @@ export default function RootLayout() {
   const handleInitAudio = async () => {
     try {
       console.log('Initializing audio after user interaction...');
+      const success = await initAudio();
       
-      // Initialize audio system with basic configuration
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
-        interruptionModeIOS: 1,  // DO_NOT_MIX
-        interruptionModeAndroid: 1,  // DO_NOT_MIX
-        shouldDuckAndroid: false,
-      });
-      
-      // Load a test sound to ensure audio is working
-      const sound = new Audio.Sound();
-      await sound.loadAsync(require('../assets/sounds/note.mp3'));
-      await sound.playAsync();
-      await sound.unloadAsync();
-      
-      console.log('Audio system initialized successfully');
-      setAudioInitialized(true);
-      setShowAudioPrompt(false);
+      if (success) {
+        console.log('Audio system initialized successfully');
+        setAudioInitialized(true);
+        setShowAudioPrompt(false);
+      } else {
+        throw new Error('Audio initialization failed');
+      }
     } catch (e) {
       console.error('Failed to initialize audio:', e);
       setShowAudioPrompt(false);
-      alert('Audio initialization failed. Some features may not work properly.');
+      alert('Audio initialization failed. Please restart the app and try again.');
     }
   };
+
+  // Auto-initialize audio on Android (no user interaction required)
+  useEffect(() => {
+    if (Platform.OS === 'android' && !audioInitialized) {
+      handleInitAudio();
+    }
+  }, [audioInitialized]);
 
   // Force landscape orientation
   useEffect(() => {

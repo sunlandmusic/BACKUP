@@ -1,61 +1,42 @@
 import { Audio } from 'expo-av';
 import { Sound } from 'expo-av/build/Audio/Sound';
+import { AVPlaybackStatus, AVPlaybackStatusSuccess } from 'expo-av/build/AV';
 import { InstrumentType, Chord } from '@/types/music';
 
-// Types
-export type FlamValue = '1/4' | '1/8' | '1/16' | '1/32' | 'off';
-
 // Sound instances
+let baseSound: Audio.Sound | null = null;
 let clickSound: Audio.Sound | null = null;
-let pianoSound: Audio.Sound | null = null;
+let noteSounds: (Audio.Sound | null)[] = []; // Array to hold pre-initialized sounds
 let activeSounds: Audio.Sound[] = [];
 let isPlaying = false;
 let currentBeat = 0;
 let timeoutId: NodeJS.Timeout | null = null;
 let bpm = 120;
+let isAudioInitialized = false;
 
-// Attack settings
-const ATTACK_TIME_MS = 50; // Increased from 10ms to 50ms for smoother attack
-const ATTACK_STEPS = 10; // Increased steps for smoother ramping
-const INITIAL_VOLUME = 0.1; // Lower initial volume for softer attack
+const NUM_NOTE_SOUNDS = 8; // Number of pre-initialized sounds for chords
 
-const loadSound = async (path: any): Promise<Audio.Sound | null> => {
+const createSound = async (asset: any): Promise<Audio.Sound | null> => {
   try {
-    console.log('Loading sound from path:', path);
-    const { sound } = await Audio.Sound.createAsync(path, { 
-      shouldPlay: false,
-      volume: INITIAL_VOLUME, // Start with lower volume
-      progressUpdateIntervalMillis: 50 // More frequent updates
-    });
-    console.log('Sound loaded successfully');
+    const { sound } = await Audio.Sound.createAsync(
+      asset,
+      { shouldPlay: false, volume: 1.0 }
+    );
     return sound;
   } catch (error) {
-    console.error('Error loading sound:', path, error);
+    console.error('Error creating sound:', error);
     return null;
   }
 };
 
-// Function to create a smooth attack
-const smoothAttack = async (sound: Audio.Sound) => {
-  try {
-    const volumeStep = (1.0 - INITIAL_VOLUME) / ATTACK_STEPS;
-    const timeStep = ATTACK_TIME_MS / ATTACK_STEPS;
-
-    for (let i = 0; i <= ATTACK_STEPS; i++) {
-      const volume = INITIAL_VOLUME + (volumeStep * i);
-      await sound.setVolumeAsync(volume);
-      await new Promise(resolve => setTimeout(resolve, timeStep));
-    }
-  } catch (error) {
-    console.error('Error in smooth attack:', error);
-  }
-};
-
 export const initAudio = async () => {
+  if (isAudioInitialized) {
+    return true;
+  }
+
   try {
     console.log('Starting audio initialization...');
     
-    // Configure audio mode first
     await Audio.setAudioModeAsync({
       allowsRecordingIOS: false,
       staysActiveInBackground: true,
@@ -63,89 +44,141 @@ export const initAudio = async () => {
       shouldDuckAndroid: true,
       playThroughEarpieceAndroid: false,
     });
-    console.log('Audio mode configured');
 
-    // Load the piano sound
-    console.log('Loading piano sound...');
-    const piano = await loadSound(require('../../assets/sounds/PIANO.mp3'));
-    if (piano) {
-      pianoSound = piano;
-      console.log('Piano sound loaded successfully');
+    // Reset state
+    await cleanup();
+    
+    // Initialize multiple sound instances for notes
+    noteSounds = await Promise.all(
+      Array(NUM_NOTE_SOUNDS).fill(null).map(() => createSound(require('../../assets/sounds/PIANO.mp3')))
+    );
+    
+    if (noteSounds.some(sound => sound === null)) {
+      throw new Error('Failed to load all note sounds');
     }
 
-    // Load the click sound
-    console.log('Loading click sound...');
-    try {
-      const { sound: click } = await Audio.Sound.createAsync(
-        require('../../assets/sounds/CLICK.mp3'),
-        { 
-          shouldPlay: false,
-          volume: INITIAL_VOLUME,
-          progressUpdateIntervalMillis: 50
-        }
-      );
-      clickSound = click;
-      console.log('Click sound loaded successfully');
-      
-      // Test play the click sound once
-      await click.playAsync();
-      await click.stopAsync();
-      await click.setPositionAsync(0);
-      console.log('Click sound test play successful');
-    } catch (error) {
-      console.error('Error loading click sound:', error);
+    // Load click sound
+    clickSound = await createSound(require('../../assets/sounds/CLICK.mp3'));
+    if (!clickSound) {
+      throw new Error('Failed to load click sound');
     }
 
-    // Log initialization status
-    console.log('Audio initialization complete:', {
-      pianoLoaded: pianoSound !== null,
-      clickLoaded: clickSound !== null
-    });
-
+    isAudioInitialized = true;
+    console.log('Audio initialization complete');
     return true;
+
   } catch (error) {
     console.error('Error in audio initialization:', error);
+    await cleanup();
+    isAudioInitialized = false;
     return false;
   }
 };
 
-export const setBpm = (newBpm: number) => {
-  bpm = newBpm;
+const cleanup = async () => {
+  try {
+    for (const sound of noteSounds) {
+      if (sound) await sound.unloadAsync();
+    }
+    noteSounds = [];
+    if (clickSound) {
+      await clickSound.unloadAsync();
+      clickSound = null;
+    }
+    for (const sound of activeSounds) {
+      await sound.unloadAsync();
+    }
+    activeSounds = [];
+    isAudioInitialized = false;
+  } catch (error) {
+    console.error('Error during cleanup:', error);
+  }
 };
 
-const playNextBeat = async () => {
-  if (!isPlaying || !clickSound) {
-    console.log('Cannot play beat:', { isPlaying, hasClickSound: clickSound !== null });
+export const playNote = async (note: number) => {
+  if (!baseSound) {
+    console.error('No base sound loaded for current instrument');
     return;
   }
 
   try {
-    console.log('Playing beat:', currentBeat);
-    
-    // Create a new click sound instance for this beat
-    const { sound: newClick } = await Audio.Sound.createAsync(
-      require('../../assets/sounds/CLICK.mp3'),
-      { 
-        shouldPlay: false,
-        volume: INITIAL_VOLUME,
-        progressUpdateIntervalMillis: 50
-      }
+    await baseSound.setPositionAsync(0);
+    await baseSound.setVolumeAsync(0.8);
+    await baseSound.setRateAsync(
+      Math.pow(2, (note - 60) / 12),
+      true,
+      Audio.PitchCorrectionQuality.High
     );
-    
-    await newClick.playAsync();
-    await smoothAttack(newClick);
-    
-    // Add to active sounds for cleanup
-    activeSounds.push(newClick);
+    await baseSound.playAsync();
+  } catch (error) {
+    console.error('Error playing note:', error);
+  }
+};
 
-    // Calculate time to next beat
-    const msPerBeat = (60 / bpm) * 1000;
+export const playChord = async (chord: Chord) => {
+  if (!isAudioInitialized) {
+    await initAudio();
+  }
 
-    // Increment beat counter
+  try {
+    // Create all sounds first
+    const soundPromises = chord.notes.map(() => 
+      Audio.Sound.createAsync(
+        require('../../assets/sounds/PIANO.mp3'),
+        { shouldPlay: false, volume: 0.8 }
+      )
+    );
+
+    const soundResults = await Promise.all(soundPromises);
+    
+    // Set up all sounds
+    await Promise.all(
+      soundResults.map(({ sound }, index) => 
+        sound.setRateAsync(
+          Math.pow(2, (chord.notes[index] - 60) / 12),
+          true,
+          Audio.PitchCorrectionQuality.High
+        )
+      )
+    );
+
+    // Play all sounds simultaneously
+    await Promise.all(soundResults.map(({ sound }) => sound.playAsync()));
+
+    // Clean up
+    soundResults.forEach(({ sound }) => {
+      sound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
+        if ('isLoaded' in status && !status.isPlaying) {
+          sound.unloadAsync();
+        }
+      });
+    });
+
+  } catch (error) {
+    console.error('Error playing chord:', error);
+  }
+};
+
+const playNextBeat = async () => {
+  if (!isPlaying) return;
+
+  try {
+    // Create a new click sound instance for each beat
+    const beatSound = await createSound(require('../../assets/sounds/CLICK.mp3'));
+    if (beatSound) {
+      await beatSound.setVolumeAsync(currentBeat === 0 ? 1.0 : 0.8);
+      await beatSound.playAsync();
+      // Clean up the sound after it plays
+      beatSound.setOnPlaybackStatusUpdate(async (status) => {
+        if (status.isLoaded && status.isPlaying === false) {
+          await beatSound.unloadAsync();
+        }
+      });
+    }
+    
     currentBeat = (currentBeat + 1) % 4;
-
-    // Schedule next beat
-    timeoutId = setTimeout(playNextBeat, msPerBeat - ATTACK_TIME_MS); // Compensate for attack time
+    const msPerBeat = (60 / bpm) * 1000;
+    timeoutId = setTimeout(playNextBeat, msPerBeat);
   } catch (error) {
     console.error('Error playing beat:', error);
     isPlaying = false;
@@ -153,13 +186,11 @@ const playNextBeat = async () => {
 };
 
 export const playClick = async () => {
-  if (!clickSound) {
-    console.error('Click sound not loaded');
-    return;
+  if (!isAudioInitialized) {
+    await initAudio();
   }
 
   try {
-    console.log('Starting click playback');
     isPlaying = true;
     currentBeat = 0;
     await playNextBeat();
@@ -170,110 +201,60 @@ export const playClick = async () => {
 };
 
 export const stopClick = async () => {
-  try {
-    console.log('Stopping click playback');
-    isPlaying = false;
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-      timeoutId = null;
+  isPlaying = false;
+  if (timeoutId) {
+    clearTimeout(timeoutId);
+    timeoutId = null;
+  }
+
+  if (clickSound) {
+    try {
+      await clickSound.stopAsync();
+      await clickSound.setPositionAsync(0);
+    } catch (error) {
+      console.error('Error stopping click:', error);
     }
-    
-    if (clickSound) {
-      try {
-        await clickSound.stopAsync();
-        await clickSound.setPositionAsync(0);
-      } catch (error) {
-        console.error('Error stopping click sound:', error);
-      }
-    }
-  } catch (error) {
-    console.error('Error stopping metronome:', error);
   }
 };
 
-// Function to get flam delay in milliseconds
-function getFlamDelay(flamValue: FlamValue): number {
-  switch (flamValue) {
-    case '1/4':
-      return 125;
-    case '1/8':
-      return 62.5;
-    case '1/16':
-      return 31.25;
-    case '1/32':
-      return 15.625;
-    default:
-      return 0;
-  }
-}
-
-export const playChord = async (chord: Chord, flam: FlamValue = 'off') => {
-  if (!pianoSound) {
-    console.error('Piano sound not loaded');
-    return;
-  }
-
-  try {
-    // Stop any currently playing sounds
-    await stopAllSounds();
-
-    // Create and play sounds for each note
-    for (let i = 0; i < chord.notes.length; i++) {
-      const note = chord.notes[i];
-      try {
-        const sound = await loadSound(require('../../assets/sounds/PIANO.mp3'));
-        if (!sound) continue;
-
-        // Configure the sound
-        await sound.setRateAsync(
-          Math.pow(2, (note - 60) / 12),
-          true, // Should correct pitch
-          Audio.PitchCorrectionQuality.High
-        );
-        
-        // Add to active sounds for cleanup
-        activeSounds.push(sound);
-        
-        // Add delay for flam effect - using the new faster timing
-        const flamDelay = getFlamDelay(flam);
-        if (flamDelay > 0) {
-          await new Promise(resolve => setTimeout(resolve, i * flamDelay));
-        }
-        
-        // Play with smooth attack
-        await sound.setVolumeAsync(INITIAL_VOLUME);
-        await sound.playAsync();
-        await smoothAttack(sound);
-      } catch (error) {
-        console.error('Error playing note:', error);
-      }
-    }
-  } catch (error) {
-    console.error('Error playing chord:', error);
-  }
+export const setBpm = (newBpm: number) => {
+  bpm = newBpm;
 };
 
 export const stopAllSounds = async () => {
+  await stopClick();
+  
   try {
-    // Stop metronome
-    await stopClick();
-    
-    // Stop and unload all active sounds
     for (const sound of activeSounds) {
       if (sound) {
-        try {
-          await sound.stopAsync();
-          await sound.unloadAsync();
-        } catch (error) {
-          console.error('Error stopping sound:', error);
-        }
+        await sound.stopAsync();
+        await sound.setPositionAsync(0);
       }
     }
-    
-    // Clear the active sounds array
     activeSounds = [];
   } catch (error) {
     console.error('Error stopping all sounds:', error);
+  }
+};
+
+export const testClickSound = async () => {
+  if (!clickSound) {
+    console.log('Click sound not loaded, attempting to initialize audio...');
+    await initAudio();
+  }
+  
+  if (clickSound) {
+    try {
+      console.log('Testing click sound...');
+      await clickSound.setPositionAsync(0);
+      await clickSound.setVolumeAsync(1.0);
+      await clickSound.playAsync();
+      console.log('Click sound test successful');
+    } catch (error) {
+      console.error('Error testing click sound:', error);
+    }
+  } else {
+    console.error('Failed to load click sound');
   }
 };
 

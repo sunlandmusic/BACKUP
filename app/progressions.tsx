@@ -105,7 +105,7 @@ export default function ProgressionsScreen() {
                   }}
                   onPressOut={handleSavedChordRelease}
                   index={actualIndex + 1}
-                  chord={savedChords[actualIndex] || null}
+                  chord={savedChords[actualIndex] || undefined}
                   saveMode={saveMode}
                   isHighlighted={activeSavedChordIndex === actualIndex}
                 />
@@ -115,11 +115,11 @@ export default function ProgressionsScreen() {
         </View>
         <View style={styles.chordGridControls}>
           <Pressable 
-            style={styles.navigationControlButton}
+            style={styles.chordGridNavButton}
             onPress={handleChordGridLeftArrowPress}
             disabled={chordGridPage === 0}
           >
-            <View style={[styles.navigationControlButton, chordGridPage === 0 && styles.navigationControlButtonDisabled]}>
+            <View style={[styles.arrowCircle, chordGridPage === 0 && styles.arrowCircleDisabled]}>
               <Play 
                 size={16} 
                 color={chordGridPage === 0 ? colors.textMuted : colors.textOffWhite}
@@ -129,11 +129,11 @@ export default function ProgressionsScreen() {
             </View>
           </Pressable>
           <Pressable 
-            style={styles.navigationControlButton}
+            style={styles.chordGridNavButton}
             onPress={handleChordGridRightArrowPress}
             disabled={chordGridPage >= 1}
           >
-            <View style={[styles.navigationControlButton, chordGridPage >= 1 && styles.navigationControlButtonDisabled]}>
+            <View style={[styles.arrowCircle, chordGridPage >= 1 && styles.arrowCircleDisabled]}>
               <Play 
                 size={16} 
                 color={chordGridPage >= 1 ? colors.textMuted : colors.textOffWhite}
@@ -457,9 +457,14 @@ export default function ProgressionsScreen() {
 
   // Update the step button press handler
   const handleStepPress = (index: number) => {
-    if (editMode) {
-      setSelectedChordIndex(index);
-      setEditModalVisible(true);
+    if (deleteMode) {
+      // Delete the step
+      const updatedSteps = [...stepSequencer.steps];
+      updatedSteps[index] = null;
+      setStepSequencer(prev => ({
+        ...prev,
+        steps: updatedSteps
+      }));
       return;
     }
 
@@ -469,7 +474,9 @@ export default function ProgressionsScreen() {
       if (chord) {
         const updatedSteps = [...stepSequencer.steps];
         updatedSteps[index] = {
-          ...chord,
+          root: chord.root,
+          type: chord.type,
+          notes: chord.notes,
           duration: 200 // Default duration
         };
         setStepSequencer(prev => ({
@@ -481,7 +488,7 @@ export default function ProgressionsScreen() {
   };
 
   const handleDeletePress = () => {
-    setEditMode(!editMode);
+    setDeleteMode(!deleteMode);
   };
   
   const [selectedChordType, setSelectedChordType] = useState<ChordType | null>(null);
@@ -702,12 +709,15 @@ export default function ProgressionsScreen() {
 
   // Update the saved chord press handler
   const handleSavedChordPress = (index: number) => {
-    if (editMode) {
-      setSelectedChordIndex(index);
-      setEditModalVisible(true);
+    if (deleteMode) {
+      // Delete the saved chord by creating an empty chord
+      const emptyChord = createChord('C', 'major');
+      emptyChord.notes = []; // Empty notes array to indicate no chord
+      storeSaveChord(emptyChord, index);
       return;
     }
 
+    // Existing saved chord press logic
     setActiveSavedChordIndex(index);
     const chord = savedChords[index];
     if (chord) {
@@ -737,7 +747,7 @@ export default function ProgressionsScreen() {
     setSaveMode(!saveMode);
   };
 
-  // Update the chord type handling
+  // Get color for saved chord button
   const getSavedChordColor = (index: number) => {
     if (savedChords.length <= index) return colors.buttonGrey;
     
@@ -747,28 +757,37 @@ export default function ProgressionsScreen() {
     switch (chord.type) {
       case 'major': return colors.chord.major;
       case 'minor': return colors.chord.minor;
-      case 'dim': return colors.chord.diminished;
+      case 'diminished': return colors.chord.diminished;
       case 'augmented': return colors.chord.augmented;
-      case '7': return colors.chord.dominant7;
+      case 'dominant7': return colors.chord.dominant7;
       case 'major7': return colors.chord.major7;
       case 'minor7': return colors.chord.minor7;
       case 'major9': return colors.chord.major9;
       case 'minor9': return colors.chord.minor9;
-      case '9': return colors.chord['9'];
+      case 'dominant9': return colors.chord['9']; // Using '9' from colors instead of 'dominant9'
       case 'sus2': return colors.chord.sus2;
       case 'sus4': return colors.chord.sus4;
       case 'add9': return colors.chord.add9;
       case 'm7b5': return colors.chord.m7b5;
       case 'm11': return colors.chord.m11;
+      case 'dim': return colors.chord.dim;
       case 'dim7': return colors.chord.dim7;
-      case '6': return colors.chord.user;
-      case 'user': return colors.chord.user;
       default: return colors.chord.user;
     }
   };
 
-  // Update the chord display name function
+  // Update handleSavedChordPageChange
+  const handleSavedChordPageChange = (direction: 'prev' | 'next') => {
+    if (direction === 'prev' && savedChordPage > 0) {
+      setSavedChordPage(prev => prev - 1);
+    } else if (direction === 'next' && savedChordPage < 1) {
+      setSavedChordPage(prev => prev + 1);
+    }
+  };
+
+  // Get chord display name
   const getChordDisplayName = () => {
+    // Get the chord to display (either from sequencer or current chord)
     const chordToDisplay = isPlaying && stepSequencer.steps[currentStep] 
       ? stepSequencer.steps[currentStep] 
       : currentChord;
@@ -780,25 +799,25 @@ export default function ProgressionsScreen() {
     switch (chordToDisplay.type) {
       case 'major': break;
       case 'minor': displayName += 'm'; break;
-      case 'dim': displayName += 'dim'; break;
+      case 'diminished': displayName += 'dim'; break;
       case 'augmented': displayName += 'aug'; break;
-      case '7': displayName += '7'; break;
+      case 'dominant7': displayName += '7'; break;
       case 'major7': displayName += 'maj7'; break;
       case 'minor7': displayName += 'm7'; break;
       case 'major9': displayName += 'maj9'; break;
       case 'minor9': displayName += 'm9'; break;
-      case '9': displayName += '9'; break;
+      case 'dominant9': displayName += '9'; break;
       case 'sus2': displayName += 'sus2'; break;
       case 'sus4': displayName += 'sus4'; break;
       case 'add9': displayName += 'add9'; break;
       case 'm7b5': displayName += 'm7b5'; break;
       case 'm11': displayName += 'm11'; break;
+      case 'dim': displayName += 'dim'; break;
       case 'dim7': displayName += 'dim7'; break;
-      case '6': displayName += '6'; break;
-      case 'user': displayName += 'user'; break;
       default: break;
     }
     
+    // Add slash notation for bass note if different from root
     if (chordToDisplay.bassNote && chordToDisplay.bassNote !== chordToDisplay.root) {
       displayName += `/${chordToDisplay.bassNote}`;
     }
@@ -892,7 +911,7 @@ export default function ProgressionsScreen() {
           styles.stepButton,
           chord && styles.stepButtonActive,
           isHighlighted && styles.stepButtonHighlighted,
-          editMode && styles.stepButtonEditMode
+          deleteMode && styles.stepButtonDeleteMode
         ]}
         onPress={() => handleStepPress(index)}
       >
@@ -902,9 +921,9 @@ export default function ProgressionsScreen() {
         ]}>
           {index + 1}
         </Text>
-        {editMode && chord && (
-          <View style={styles.editOverlay}>
-            <Text style={styles.editOverlayText}>E</Text>
+        {deleteMode && chord && (
+          <View style={styles.deleteOverlay}>
+            <Text style={styles.deleteOverlayText}>X</Text>
           </View>
         )}
       </Pressable>
@@ -958,7 +977,7 @@ export default function ProgressionsScreen() {
   // Update the renderStepSequencer function to remove the play button from here
   const renderStepSequencer = () => {
     const stepsPerRow = 8;
-    const totalRows = 4;
+    const totalRows = 4; // 32 steps total / 8 steps per row
     const rows = Array.from({ length: totalRows }).map((_, rowIndex) => {
       const startIndex = rowIndex * stepsPerRow + (seqGridPage * 32);
       return (
@@ -978,7 +997,7 @@ export default function ProgressionsScreen() {
         </View>
         <View style={styles.seqGridControls}>
           <Pressable
-            style={[styles.navigationControlButton, seqGridPage === 0 && styles.navigationControlButtonDisabled]}
+            style={[styles.arrowCircle, seqGridPage === 0 && styles.arrowCircleDisabled]}
             onPress={handleSeqLeftArrowPress}
             disabled={seqGridPage === 0}
           >
@@ -990,7 +1009,7 @@ export default function ProgressionsScreen() {
             />
           </Pressable>
           <Pressable
-            style={[styles.navigationControlButton, seqGridPage === 1 && styles.navigationControlButtonDisabled]}
+            style={[styles.arrowCircle, seqGridPage === 1 && styles.arrowCircleDisabled]}
             onPress={handleSeqRightArrowPress}
             disabled={seqGridPage === 1}
           >
@@ -1176,7 +1195,7 @@ export default function ProgressionsScreen() {
       paddingBottom: 8,
       gap: 8,
       position: 'absolute',
-      bottom: 23, // Changed from 33 to 23 (raised by 10 pixels)
+      bottom: 33, // Changed from 18 to 33 (lowered by 15 pixels)
       left: 10,
       right: 0,
     },
@@ -1262,27 +1281,6 @@ export default function ProgressionsScreen() {
       right: -20,
       top: '50%',
       transform: [{ translateY: -50 }],
-    },
-    baseGridControls: {
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 25,
-      position: 'absolute',
-      right: -16,
-      top: '50%',
-      transform: [{ translateY: -53 }],
-      zIndex: 2,
-    },
-    chordGridControls: {
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 25,
-      position: 'absolute',
-      right: -30,
-      top: '60%',
-      transform: [{ translateY: -53 }],
     },
     seqGridControls: {
       flexDirection: 'column',
@@ -1387,24 +1385,25 @@ export default function ProgressionsScreen() {
     playButtonActive: {
       backgroundColor: colors.buttonActive,
     },
-    stepButtonEditMode: {
-      borderColor: colors.primary,
-      borderWidth: 2,
+    stepButtonDeleteMode: {
+      borderColor: colors.error,
     },
-    editOverlay: {
+    savedChordButtonDeleteMode: {
+      borderColor: colors.error,
+    },
+    deleteOverlay: {
       position: 'absolute',
       top: 0,
+      left: 0,
       right: 0,
-      backgroundColor: colors.primary,
-      width: 20,
-      height: 20,
-      borderRadius: 10,
+      bottom: 0,
+      backgroundColor: 'rgba(255, 0, 0, 0.3)',
       justifyContent: 'center',
       alignItems: 'center',
     },
-    editOverlayText: {
+    deleteOverlayText: {
       color: colors.text,
-      fontSize: 12,
+      fontSize: 20,
       fontWeight: 'bold',
     },
     stepButtonHighlighted: {
@@ -1451,23 +1450,21 @@ export default function ProgressionsScreen() {
       fontWeight: 'bold',
     },
     saveButton: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
+      width: 24,
+      height: 48,
+      borderRadius: 8,
       backgroundColor: colors.buttonGrey,
       justifyContent: 'center',
       alignItems: 'center',
-      paddingTop: 4,  // Add padding to move dots down
-      marginLeft: 0,  // Remove left margin to align with other buttons
-      marginRight: 0,  // Remove right margin to align with other buttons
     },
     saveButtonActive: {
-      backgroundColor: colors.error,
+      borderWidth: 2,
+      borderColor: colors.error,
     },
     saveButtonText: {
       color: '#8B0000',  // DarkRed
-      fontSize: 28,  // Increased from 20 to 28
-      fontWeight: '900',  // Changed from 'bold' to '900' for extra boldness
+      fontSize: 20,
+      fontWeight: 'bold',
     },
     savedChordNavButton: {
       width: 36,
@@ -1539,7 +1536,52 @@ export default function ProgressionsScreen() {
     editButtonActive: {
       backgroundColor: colors.primary,
     },
-    navigationControlButton: {
+    chordGridControls: {
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 25,
+      position: 'absolute',
+      right: -30,
+      top: '60%',
+      transform: [{ translateY: -53 }],
+    },
+    chordGridNavButton: {
+      width: 36,
+      height: 36,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    seqGridControls: {
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 25,
+      position: 'absolute',
+      right: -16,
+      top: '50%',
+      transform: [{ translateY: -53 }],
+      zIndex: 2,
+    },
+    seqArrowButton: {
+      width: 36,
+      height: 36,
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderRadius: 18,
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    seqLeftArrowIcon: {
+      color: colors.text,
+      fontSize: 24,
+    },
+    seqRightArrowIcon: {
+      color: colors.text,
+      fontSize: 24,
+    },
+    arrowCircle: {
       width: 32,
       height: 32,
       borderRadius: 16,
@@ -1549,20 +1591,39 @@ export default function ProgressionsScreen() {
       justifyContent: 'center',
       alignItems: 'center',
     },
-    navigationControlButtonDisabled: {
+    arrowCircleDisabled: {
       backgroundColor: colors.surfaceLight,
     },
-    navigationArrowLeft: {
-      width: 32,
-      height: 32,
+    paginationContainer: {
+      position: 'absolute',
+      bottom: 45,
+      left: 0,
+      right: 0,
+      flexDirection: 'row',
       justifyContent: 'center',
       alignItems: 'center',
+      paddingHorizontal: 20,
+      zIndex: 2,
     },
-    navigationArrowRight: {
-      width: 32,
-      height: 32,
+    savedProgressionButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.buttonGrey,
+      borderRadius: 8,
+      padding: 8,
+      marginBottom: 8,
+      height: 36, // Reduced from 48 to 36 (25% reduction)
+    },
+    gridItem: {
+      width: 78,
+      height: 48,
       justifyContent: 'center',
       alignItems: 'center',
+      borderRadius: 4,
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginHorizontal: 2
     },
   });
 
@@ -1601,7 +1662,7 @@ export default function ProgressionsScreen() {
         onPress={handleSequenceLeftArrowPress}
         disabled={sequencePage === 0}
       >
-        <View style={[styles.navigationControlButton, sequencePage === 0 && styles.navigationControlButtonDisabled]}>
+        <View style={[styles.arrowCircle, sequencePage === 0 && styles.arrowCircleDisabled]}>
           <Play 
             size={16} 
             color={sequencePage === 0 ? colors.textMuted : colors.textOffWhite}
@@ -1619,7 +1680,7 @@ export default function ProgressionsScreen() {
         onPress={handleSequenceRightArrowPress}
         disabled={sequencePage === 1}
       >
-        <View style={[styles.navigationControlButton, sequencePage === 1 && styles.navigationControlButtonDisabled]}>
+        <View style={[styles.arrowCircle, sequencePage === 1 && styles.arrowCircleDisabled]}>
           <Play 
             size={16} 
             color={sequencePage === 1 ? colors.textMuted : colors.textOffWhite}
@@ -1638,6 +1699,11 @@ export default function ProgressionsScreen() {
       void playClick(0);
     }
     setIsPlaying(!isPlaying);
+  };
+
+  // Update handleEditPress
+  const handleEditPress = () => {
+    setEditModalVisible(true);
   };
 
   // Add these state variables for progression buttons
@@ -1667,8 +1733,8 @@ export default function ProgressionsScreen() {
 
   // Handler for loading saved progression
   const handleSavedProgressionPress = (index: number) => {
-    if (editMode) {
-      setSelectedChordIndex(index);
+    if (deleteMode) {
+      setSelectedProgressionIndex(index);
       setEditModalVisible(true);
       return;
     }
@@ -1696,7 +1762,7 @@ export default function ProgressionsScreen() {
   // Add state for edit modal
   const [selectedProgressionIndex, setSelectedProgressionIndex] = useState<number | null>(null);
 
-  // Update EditModal component to handle null selectedChordIndex
+  // Update EditModal component
   const EditModal = () => (
     <Modal
       visible={editModalVisible}
@@ -1708,15 +1774,15 @@ export default function ProgressionsScreen() {
     >
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Edit Options</Text>
+          <Text style={styles.modalTitle}>Edit Chord</Text>
           <View style={styles.modalButtons}>
             <Pressable 
               style={styles.modalButton}
               onPress={() => {
                 if (selectedChordIndex !== null) {
                   handleClearChord(selectedChordIndex);
+                  setEditModalVisible(false);
                 }
-                setEditModalVisible(false);
               }}
             >
               <Text style={styles.modalButtonText}>Clear</Text>
@@ -1730,8 +1796,8 @@ export default function ProgressionsScreen() {
                   } else {
                     handleCopyChord(selectedChordIndex);
                   }
+                  setEditModalVisible(false);
                 }
-                setEditModalVisible(false);
               }}
             >
               <Text style={styles.modalButtonText}>{copiedChord ? 'Paste' : 'Copy'}</Text>
@@ -1795,21 +1861,6 @@ export default function ProgressionsScreen() {
     setCurrentChord(null);
   };
 
-  // Update handleEditPress to properly handle the edit modal
-  const handleEditPress = () => {
-    setEditModalVisible(true);
-    setSelectedChordIndex(null); // Reset selected chord index when opening modal
-  };
-
-  // Add the missing function
-  const handleSavedChordPageChange = (direction: 'prev' | 'next') => {
-    if (direction === 'prev' && savedChordPage > 0) {
-      setSavedChordPage(prev => prev - 1);
-    } else if (direction === 'next' && savedChordPage < 1) {
-      setSavedChordPage(prev => prev + 1);
-    }
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
@@ -1857,12 +1908,12 @@ export default function ProgressionsScreen() {
 
       {/* Bottom row with save, navigation, and edit buttons */}
       <View style={styles.bottomControls}>
-        {/* Edit button */}
+        {/* Delete button */}
         <Pressable 
-          style={[styles.saveButton, editMode && styles.saveButtonActive]}
-          onPress={handleEditPress}
+          style={[styles.saveButton, deleteMode && styles.saveButtonActive]}
+          onPress={handleDeletePress}
         >
-          <Text style={styles.saveButtonText}>⋮</Text>
+          <Text style={styles.saveButtonText}>D</Text>
         </Pressable>
 
         {/* Left arrow button */}
@@ -1898,7 +1949,7 @@ export default function ProgressionsScreen() {
                 onPressOut={handleSavedProgressionRelease}
                 onLongPress={() => handleSaveCurrentProgression(progressionIndex)}
                 index={progressionIndex + 1}
-                chord={null}
+                chord={undefined}
                 saveMode={deleteMode}
                 isHighlighted={isActive || isCurrentlyPlaying}
                 isCurrentlyPlaying={isCurrentlyPlaying}
