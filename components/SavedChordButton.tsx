@@ -65,39 +65,45 @@ export const SavedChordButton: React.FC<SavedChordButtonProps> = ({
   };
 
   // Get chord display name
-  const getChordDisplayName = (): string => {
-    if (!chord) return '';
+  const getChordDisplayName = (): { main: string; extension: string } => {
+    if (!chord) return { main: '', extension: '' };
     
-    let displayName = chord.root;
+    let main = chord.root;
+    let extension = '';
     
     switch (chord.type) {
       case 'major': break;
-      case 'minor': displayName += 'm'; break;
-      case 'diminished': displayName += 'dim'; break;
-      case 'augmented': displayName += 'aug'; break;
-      case 'dominant7': displayName += '7'; break;
-      case 'major7': displayName += 'maj7'; break;
-      case 'minor7': displayName += 'm7'; break;
-      case 'major9': displayName += 'maj9'; break;
-      case 'minor9': displayName += 'm9'; break;
-      case 'dominant9': displayName += '9'; break;
-      case 'sus2': displayName += 'sus2'; break;
-      case 'sus4': displayName += 'sus4'; break;
-      case 'add9': displayName += 'add9'; break;
-      case 'm7b5': displayName += 'm7b5'; break;
-      case 'dim': displayName += 'dim'; break;
-      case 'dim7': displayName += 'dim7'; break;
-      case 'm11': displayName += 'm11'; break;
+      case 'minor': main += 'm'; break;
+      case 'dim': main += 'dim'; break;
+      case 'dim7': main += 'dim'; extension = '7'; break;
+      case 'augmented': main += 'aug'; break;
+      case '7': extension = '7'; break;
+      case 'major7': main += 'maj'; extension = '7'; break;
+      case 'minor7': main += 'm'; extension = '7'; break;
+      case 'minorMajor7': main += 'mM'; extension = '7'; break;
+      case 'major9': main += 'maj'; extension = '9'; break;
+      case 'minor9': main += 'm'; extension = '9'; break;
+      case '9': extension = '9'; break;
+      case 'sus2': main += 'sus2'; break;
+      case 'sus4': main += 'sus4'; break;
+      case 'add9': main += 'add'; extension = '9'; break;
+      case 'm7b5': main += 'm7b5'; break;
+      case 'm11': main += 'm'; extension = '11'; break;
+      case '11': extension = '11'; break;
+      case 'augmentedMajor7': main += 'aug'; extension = 'M7'; break;
+      case 'user': break;
       default: break;
     }
     
     // Add slash notation for bass note if different from root
     if (chord.bassNote && chord.bassNote !== chord.root) {
-      displayName += `/${chord.bassNote}`;
+      main += `/${chord.bassNote}`;
     }
     
-    return displayName;
+    return { main, extension };
   };
+
+  const { main, extension } = getChordDisplayName();
 
   return (
     <Pressable
@@ -116,10 +122,26 @@ export const SavedChordButton: React.FC<SavedChordButtonProps> = ({
     >
       <Text style={styles.index}>{index}</Text>
       {chord && (
-        <Text style={[
-          styles.chordName,
-          { color: (Math.floor((index - 1) / 4) === 3) ? '#FFFFFF' : colors.text }
-        ]}>{getChordDisplayName()}</Text>
+        <View style={styles.chordContainer}>
+          <Text style={[
+            styles.chordName,
+            { 
+              color: (color === colors.chord.sus2 || 
+                     color === colors.chord.major || 
+                     color === colors.chord.dim) ? '#000000' : colors.text 
+            }
+          ]}>{main}</Text>
+          {extension && (
+            <Text style={[
+              styles.chordName,
+              { 
+                color: (color === colors.chord.sus2 || 
+                       color === colors.chord.major || 
+                       color === colors.chord.dim) ? '#000000' : colors.text 
+              }
+            ]}>{extension}</Text>
+          )}
+        </View>
       )}
       {!chord && saveMode && (
         <Text style={styles.saveText}>Empty</Text>
@@ -151,6 +173,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 2,
     left: 4,
+  },
+  chordContainer: {
+    flexDirection: 'column',
+    alignItems: 'center',
   },
   chordName: {
     fontSize: 22,

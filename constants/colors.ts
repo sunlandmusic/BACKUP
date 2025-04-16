@@ -35,7 +35,7 @@ export const colors = {
     major: '#00C853', // Green
     major7: '#00C853', // Green
     major9: '#00C853', // Green
-    dominant7: '#FFC107', // Yellow
+    '7': '#FFC107', // Yellow
     
     // Second row (purple except for yellow 9)
     minor: '#9C27B0', // Purple
@@ -48,7 +48,6 @@ export const colors = {
     sus4: '#00BCD4', // Teal
     dim: '#2196F3', // Blue
     dim7: '#2196F3', // Blue
-    diminished: '#2196F3', // Blue
     
     // Fourth row
     m11: '#4A148C', // Dark purple
@@ -58,5 +57,6 @@ export const colors = {
     
     // Other chord types
     augmented: '#E91E63', // Pink
+    '11': '#2196F3', // Blue - same as dim/dim7
   }
 };

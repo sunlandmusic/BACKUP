@@ -361,13 +361,13 @@ export default function ChordComposeScreen() {
       case 'major': return colors.chord.major;
       case 'minor': return colors.chord.minor;
       case 'dim': return colors.chord.dim;
-      case 'augmented': return colors.chord.augmented;
-      case '7': return colors.chord.major9;
+      case 'augmented': return colors.chord.sus2; // Changed to match grid color
+      case '7': return colors.chord['7'];
       case 'major7': return colors.chord.major7;
       case 'minor7': return colors.chord.minor7;
       case 'major9': return colors.chord.major9;
       case 'minor9': return colors.chord.minor9;
-      case '9': return colors.chord.minor9;
+      case '9': return colors.chord['9'];
       case 'sus2': return colors.chord.sus2;
       case 'sus4': return colors.chord.sus4;
       case 'add9': return colors.chord.add9;
@@ -375,7 +375,19 @@ export default function ChordComposeScreen() {
       case 'm11': return colors.chord.m11;
       case 'dim7': return colors.chord.dim7;
       case 'user': return colors.chord.user;
-      default: return colors.chord.major;
+      case 'major11': return colors.chord.major;
+      case 'major13': return colors.chord.major;
+      case '6': return colors.chord.major;
+      case '69': return colors.chord.major;
+      case 'minor6': return colors.chord.minor;
+      case 'minor13': return colors.chord.minor;
+      case 'minorMajor7': return colors.chord.minor;
+      case '7sus4': return colors.chord.minor;
+      case 'augmented7': return colors.chord.sus4;
+      case 'augmentedMajor7': return colors.chord.dim;
+      case '11': return colors.chord.dim7;
+      case 'bass': return '#000000';
+      default: return colors.chord.user;
     }
   };
 
@@ -404,6 +416,7 @@ export default function ChordComposeScreen() {
     if (!currentChord) return '';
     let displayName = currentChord.root;
     switch (currentChord.type) {
+      // First grid chord types
       case 'major': break;
       case 'minor': displayName += 'm'; break;
       case 'dim': displayName += 'dim'; break;
@@ -421,7 +434,8 @@ export default function ChordComposeScreen() {
       case 'm11': displayName += 'm11'; break;
       case 'dim7': displayName += 'dim7'; break;
       case 'user': displayName += 'U'; break;
-      // Add new chord types from grid 2
+      
+      // Second grid chord types
       case 'major11': displayName += 'maj11'; break;
       case 'major13': displayName += 'maj13'; break;
       case '6': displayName += '6'; break;
@@ -433,6 +447,8 @@ export default function ChordComposeScreen() {
       case 'augmented7': displayName += 'aug7'; break;
       case 'augmentedMajor7': displayName += 'augM7'; break;
       case '11': displayName += '11'; break;
+      case 'bass': displayName += 'bass'; break;
+      
       default: break;
     }
     if (currentChord.bassNote && currentChord.bassNote !== currentChord.root) {
