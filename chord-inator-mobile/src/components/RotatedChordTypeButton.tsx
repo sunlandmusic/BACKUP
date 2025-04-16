@@ -40,8 +40,10 @@ export const RotatedChordTypeButton: React.FC<RotatedChordTypeButtonProps> = ({
 
   // Determine text color based on chord type
   const getTextColor = () => {
-    // Only the U (user) button should have white text
-    if (type === 'user') {
+    // Only m11, user, min, min7, and min9 should have white text
+    if (type === 'm11' || type === 'user' || 
+        type === 'min' || type === 'min7' || type === 'min9' ||
+        type === 'minor' || type === 'minor7' || type === 'minor9') {
       return '#FFFFFF';
     }
     

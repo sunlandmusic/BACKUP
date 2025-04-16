@@ -46,8 +46,8 @@ export const ChordTypeButton: React.FC<ChordTypeButtonProps> = ({
       return '#FFA500'; // Orange color for matching key/mode
     }
     
-    // Only m11, user, min, min7, and min9 should have white text
-    if (type === 'm11' || type === 'user' || 
+    // All buttons in the bottom row should have white text, plus minor chords
+    if (type === 'm11' || type === 'm7b5' || type === 'add9' || type === 'user' || 
         type === 'min' || type === 'min7' || type === 'min9' ||
         type === 'minor' || type === 'minor7' || type === 'minor9') {
       return '#FFFFFF';

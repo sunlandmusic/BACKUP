@@ -126,7 +126,6 @@ export const SavedChordGrid: React.FC<SavedChordGridProps> = ({
                   chord={chord}
                   saveMode={saveMode}
                   isHighlighted={isActive}
-                  textColor={rowIndex === 3 ? '#FFFFFF' : undefined}
                 />
               );
             })}

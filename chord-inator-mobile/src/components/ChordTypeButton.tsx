@@ -3,21 +3,23 @@ import { Pressable, Text, StyleSheet } from 'react-native';
 import { colors } from '@/constants/colors';
 import { ChordType } from '@/types/music';
 
-interface RotatedChordTypeButtonProps {
+interface ChordTypeButtonProps {
   type: ChordType | string;
   label: string;
   onPress: () => void;
   isSelected?: boolean;
   isHighlighted?: boolean;
+  isMatchingKeyMode?: boolean;
   customColor?: string;
 }
 
-export const RotatedChordTypeButton: React.FC<RotatedChordTypeButtonProps> = ({
+export const ChordTypeButton: React.FC<ChordTypeButtonProps> = ({
   type,
   label,
   onPress,
   isSelected = false,
   isHighlighted = false,
+  isMatchingKeyMode = false,
   customColor
 }) => {
   // Get background color based on chord type
@@ -40,8 +42,14 @@ export const RotatedChordTypeButton: React.FC<RotatedChordTypeButtonProps> = ({
 
   // Determine text color based on chord type
   const getTextColor = () => {
-    // Only the U (user) button should have white text
-    if (type === 'user') {
+    if (isMatchingKeyMode) {
+      return '#FFA500'; // Orange color for matching key/mode
+    }
+    
+    // Only m11, user, min, min7, and min9 should have white text
+    if (type === 'm11' || type === 'user' || 
+        type === 'min' || type === 'min7' || type === 'min9' ||
+        type === 'minor' || type === 'minor7' || type === 'minor9') {
       return '#FFFFFF';
     }
     
@@ -73,6 +81,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 8,
     margin: 4,
+    aspectRatio: 1.5,
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -91,7 +100,8 @@ const styles = StyleSheet.create({
   },
   text: {
     fontWeight: 'bold',
-    fontSize: 14,
+    fontSize: 16,
     textAlign: 'center',
+    transform: [{ rotate: '90deg' }],
   },
 });

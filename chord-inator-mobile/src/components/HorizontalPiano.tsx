@@ -319,18 +319,18 @@ const styles = StyleSheet.create({
     top: 101,
     left: 0,
     width: '100%',
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between',
   },
   whiteKey: {
-    width: 49,
+    width: 39,
     height: 100,
     borderRadius: 15,
     backgroundColor: '#999999',
-    borderWidth: 0,
+    borderWidth: 1,
     borderColor: '#333333',
     justifyContent: 'flex-end',
     alignItems: 'center',
-    marginHorizontal: 4.5,
+    marginHorizontal: 0,
     position: 'relative',
   },
   whiteKeyPressed: {
@@ -352,13 +352,12 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#444444',
+    borderColor: '#808080',
     borderRadius: 13, // Slightly smaller than the outer border radius
     margin: 0, // Removed margin to make borders flush
   },
   whiteKeyInnerInScale: {
-    borderWidth: 2,
-    borderColor: '#444444',
+    borderWidth: 2, // Slightly thicker black border when in scale
   },
   blackKeysRow: {
     position: 'absolute',
@@ -368,7 +367,7 @@ const styles = StyleSheet.create({
     height: '60%',
   },
   blackKey: {
-    width: 49,
+    width: 39,
     height: 100,
     borderRadius: 15,
     position: 'absolute',
@@ -376,24 +375,23 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     alignItems: 'center',
     paddingBottom: 5,
-    borderWidth: 0,
+    borderWidth: 1,
     borderColor: colors.primary,
-    marginHorizontal: 0,
   },
   blackKeyPosition1: {
-    left: 33,
+    left: 25, // C#
   },
   blackKeyPosition2: {
-    left: 92,
+    left: 76, // D#
   },
   blackKeyPosition3: {
-    left: 206,
+    left: 177, // F#
   },
   blackKeyPosition4: {
-    left: 265,
+    left: 228, // G#
   },
   blackKeyPosition5: {
-    left: 323,
+    left: 279, // A#
   },
   blackKeyPressed: {
     backgroundColor: '#1D1D1D',

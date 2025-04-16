@@ -46,19 +46,7 @@ export const getChordNotes = (
     'm11': [0, 3, 7, 10, 14, 17],
     dim: [0, 3, 6],
     dim7: [0, 3, 6, 9],
-    user: [0, 4, 7], // Default to major, should be overridden
-    'major11': [0, 4, 7, 11, 14, 17],
-    'major13': [0, 4, 7, 11, 14, 17, 21],
-    '6': [0, 4, 7, 9],
-    '69': [0, 4, 7, 9, 14],
-    'minor6': [0, 3, 7, 9],
-    'minor13': [0, 3, 7, 10, 14, 17, 21],
-    'minorMajor7': [0, 3, 7, 11],
-    '7sus4': [0, 5, 7, 10],
-    'augmented7': [0, 4, 8, 10],
-    'augmentedMajor7': [0, 4, 8, 11],
-    '11': [0, 4, 7, 10, 14, 17],
-    'bass': [0] // Just the root note for bass
+    user: [0, 4, 7] // Default to major, should be overridden
   };
   
   // Make sure the type exists in our intervals

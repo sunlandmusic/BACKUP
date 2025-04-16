@@ -87,7 +87,6 @@ export const SavedChordButton: React.FC<SavedChordButtonProps> = ({
       case 'm7b5': displayName += 'm7b5'; break;
       case 'dim': displayName += 'dim'; break;
       case 'dim7': displayName += 'dim7'; break;
-      case 'm11': displayName += 'm11'; break;
       default: break;
     }
     
@@ -112,14 +111,12 @@ export const SavedChordButton: React.FC<SavedChordButtonProps> = ({
       onPressOut={handlePressOut}
       onLongPress={onLongPress}
       delayLongPress={500}
+      // Add data attribute for web to help with event tracking
       {...(Platform.OS === 'web' ? { 'data-chord-index': index.toString() } : {})}
     >
       <Text style={styles.index}>{index}</Text>
       {chord && (
-        <Text style={[
-          styles.chordName,
-          { color: (Math.floor((index - 1) / 4) === 3) ? '#FFFFFF' : colors.text }
-        ]}>{getChordDisplayName()}</Text>
+        <Text style={styles.chordName}>{getChordDisplayName()}</Text>
       )}
       {!chord && saveMode && (
         <Text style={styles.saveText}>Empty</Text>
@@ -131,7 +128,7 @@ export const SavedChordButton: React.FC<SavedChordButtonProps> = ({
 const styles = StyleSheet.create({
   button: {
     width: 68,
-    height: 53,
+    height: 36,
     borderRadius: 4,
     justifyContent: 'center',
     alignItems: 'center',
@@ -153,8 +150,9 @@ const styles = StyleSheet.create({
     left: 4,
   },
   chordName: {
-    fontSize: 22,
-    fontWeight: '400',
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: 'bold',
   },
   saveText: {
     color: colors.error,

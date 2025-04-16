@@ -1,8 +1,7 @@
 {
-  "name": "chord-nator-ui",
+  "name": "chordinator",
   "main": "expo-router/entry",
   "version": "1.0.0",
-  "description": "Chord-nator UI - A modern chord progression and music composition tool",
   "scripts": {
     "start": "expo start --tunnel --port 8082",
     "start-web": "expo start --web --tunnel --port 8082",
