@@ -31,10 +31,10 @@ export const getChordNotes = (
   const intervals: Record<ChordType, number[]> = {
     major: [0, 4, 7],
     minor: [0, 3, 7],
-    diminished: [0, 3, 6],
+    dim: [0, 3, 6],
     augmented: [0, 4, 8],
-    dominant7: [0, 4, 7, 10],
-    dominant9: [0, 4, 7, 10, 14],
+    '7': [0, 4, 7, 10],
+    '9': [0, 4, 7, 10, 14],
     major7: [0, 4, 7, 11],
     minor7: [0, 3, 7, 10],
     major9: [0, 4, 7, 11, 14],
@@ -44,7 +44,6 @@ export const getChordNotes = (
     add9: [0, 4, 7, 14],
     'm7b5': [0, 3, 6, 10],
     'm11': [0, 3, 7, 10, 14, 17],
-    dim: [0, 3, 6],
     dim7: [0, 3, 6, 9],
     user: [0, 4, 7], // Default to major, should be overridden
     'major11': [0, 4, 7, 11, 14, 17],
@@ -145,10 +144,12 @@ export const getDiatonicChords = (key: NoteName, mode: MusicMode): Chord[] => {
     
     // Try all possible chord types
     const allChordTypes: ChordType[] = [
-      'major', 'minor', 'diminished', 'augmented',
-      'dominant7', 'major7', 'minor7', 'major9', 'minor9',
-      'dominant9', 'sus2', 'sus4', 'add9', 'm7b5', 'm11',
-      'dim', 'dim7'
+      'major', 'minor', 'dim', 'augmented',
+      '7', 'major7', 'minor7', 'major9', 'minor9',
+      '9', 'sus2', 'sus4', 'add9', 'm7b5', 'm11',
+      'dim7', '6', '69', 'minor6', 'minorMajor7',
+      'major11', 'major13', 'minor13', '7sus4',
+      'augmented7', 'augmentedMajor7', '11'
     ];
     
     // Test each chord type
@@ -182,10 +183,107 @@ export const isChordDiatonic = (chord: Chord, key: NoteName, mode: MusicMode): b
 };
 
 // Check if a chord type is diatonic to the current key and mode for any root
-export const isChordTypeDiatonic = (root: NoteName, type: ChordType): boolean => {
-  // This is a simplified version that doesn't actually check diatonicity
-  // It's used to highlight chord types in the UI
-  return true;
+export const isChordTypeDiatonic = (root: NoteName, type: ChordType, mode: MusicMode, currentKey: NoteName): boolean => {
+  // Get the scale notes for the current key and mode
+  const scaleNotes = getScaleNotes(currentKey, mode);
+  
+  // Find the scale degree of the root note
+  const rootIndex = scaleNotes.indexOf(root);
+  if (rootIndex === -1) return false;
+
+  // Define the diatonic chord qualities for each scale degree in all modes
+  const diatonicQualities: Record<MusicMode, Record<number, ChordType[]>> = {
+    off: {
+      0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] // No diatonic chords in 'off' mode
+    },
+    major: {
+      0: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // I
+      1: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // ii
+      2: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // iii
+      3: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // IV
+      4: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // V
+      5: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // vi
+      6: ['dim', 'm7b5', 'dim7'] // vii°
+    },
+    minor: {
+      0: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // i
+      1: ['dim', 'm7b5', 'dim7'], // ii°
+      2: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // III
+      3: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // iv
+      4: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // v
+      5: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // VI
+      6: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'] // VII
+    },
+    ionian: {
+      0: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // I
+      1: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // ii
+      2: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // iii
+      3: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // IV
+      4: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // V
+      5: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // vi
+      6: ['dim', 'm7b5', 'dim7'] // vii°
+    },
+    dorian: {
+      0: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // i
+      1: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // ii
+      2: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // III
+      3: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // IV
+      4: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // v
+      5: ['dim', 'm7b5', 'dim7'], // vi°
+      6: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'] // VII
+    },
+    phrygian: {
+      0: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // i
+      1: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // II
+      2: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // III
+      3: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // iv
+      4: ['dim', 'm7b5', 'dim7'], // v°
+      5: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // VI
+      6: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'] // vii
+    },
+    lydian: {
+      0: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // I
+      1: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // II
+      2: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // iii
+      3: ['dim', 'm7b5', 'dim7'], // iv°
+      4: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // V
+      5: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // vi
+      6: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'] // vii
+    },
+    mixolydian: {
+      0: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // I
+      1: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // ii
+      2: ['dim', 'm7b5', 'dim7'], // iii°
+      3: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // IV
+      4: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // v
+      5: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // vi
+      6: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'] // VII
+    },
+    aeolian: {
+      0: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // i
+      1: ['dim', 'm7b5', 'dim7'], // ii°
+      2: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // III
+      3: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // iv
+      4: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // v
+      5: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // VI
+      6: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'] // VII
+    },
+    locrian: {
+      0: ['dim', 'm7b5', 'dim7'], // i°
+      1: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // II
+      2: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // iii
+      3: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // iv
+      4: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // V
+      5: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // VI
+      6: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'] // vii
+    }
+  };
+
+  // Get the allowed chord types for the current mode and scale degree
+  const allowedTypes = diatonicQualities[mode]?.[rootIndex] || [];
+  
+  // Check if the chord type is in the allowed types
+  return allowedTypes.includes(type);
 };
 
 // Get common chord progressions for a key
