@@ -49,10 +49,10 @@ const STEEL_DRUM = require('../assets/sounds/BRASS.mp3'); // Using BRASS for STE
 
 // Voice click sounds with explicit asset requires
 const CLICK_SOUNDS = {
-  1: require('/Users/hakimabdulsamad/Desktop/chordcraft-nugesaf/app/assets/click-voice/one.mp3'),
-  2: require('/Users/hakimabdulsamad/Desktop/chordcraft-nugesaf/app/assets/click-voice/two.mp3'),
-  3: require('/Users/hakimabdulsamad/Desktop/chordcraft-nugesaf/app/assets/click-voice/three.mp3'),
-  4: require('/Users/hakimabdulsamad/Desktop/chordcraft-nugesaf/app/assets/click-voice/four.mp3')
+  1: require('../assets/click-voice/one.mp3'),
+  2: require('../assets/click-voice/two.mp3'),
+  3: require('../assets/click-voice/three.mp3'),
+  4: require('../assets/click-voice/four.mp3')
 };
 
 // Add a new state variable to track if we're currently playing
@@ -83,178 +83,365 @@ export const forceReloadAudio = async () => {
   }
 };
 
-// Initialize audio
+// Initialize audio for mobile
 export const initAudio = async () => {
-  // If already initialized, return true
-  if (isAudioInitialized) {
-    return true;
-  }
+  if (Platform.OS === 'web') {
+    try {
+      // Create audio context if it doesn't exist
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        logDebug('Web Audio API initialized');
+      }
 
-  // If initialization is in progress, wait for it
-  if (initializationPromise) {
+      // Resume audio context if it's suspended (browsers require user interaction)
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+        logDebug('Audio context resumed');
+      }
+      
+      // Initialize Tone.js
+      if (Tone.context.state !== 'running') {
+        await Tone.start();
+        await Tone.context.resume();
+        logDebug('Tone.js initialized and resumed');
+      }
+
+      // Sync Tone.js with our audio context
+      Tone.setContext(audioContext);
+      
+      isAudioInitialized = true;
+      return true;
+    } catch (e) {
+      console.error('Error initializing web audio:', e);
+      throw e;
+    }
+  } else {
+    // If already initialized, return true
+    if (isAudioInitialized) {
+      return true;
+    }
+
+    // If initialization is in progress, wait for it
+    if (initializationPromise) {
+      return initializationPromise;
+    }
+
+    // Start new initialization
+    initializationPromise = (async () => {
+      try {
+        logDebug('Starting mobile audio initialization...');
+        
+        // First, clean up any existing audio resources
+        await cleanup();
+        
+        // Configure audio mode for optimal mobile performance
+        await Audio.setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: true,
+          shouldDuckAndroid: true,  // Changed to true for better Android behavior
+          interruptionModeIOS: 1,  // Audio.InterruptionModeIOS.DoNotMix
+          interruptionModeAndroid: 1,  // Audio.InterruptionModeAndroid.DoNotMix
+          playThroughEarpieceAndroid: false,
+          allowsRecordingIOS: false,
+        });
+
+        // Load instrument sounds with proper error handling and retries
+        const loadSound = async (asset: any, retries = 3): Promise<Audio.Sound | null> => {
+          for (let i = 0; i < retries; i++) {
+            try {
+              const { sound } = await Audio.Sound.createAsync(asset, { 
+                shouldPlay: false,
+                volume: 1.0,
+                progressUpdateIntervalMillis: 50,
+                shouldCorrectPitch: true
+              });
+              return sound;
+            } catch (e) {
+              if (i === retries - 1) {
+                console.error('Failed to load sound after retries:', e);
+                return null;
+              }
+              await new Promise(resolve => setTimeout(resolve, 100)); // Wait before retry
+            }
+          }
+          return null;
+        };
+
+        // Initialize instrument sounds
+        const instrumentSounds = await Promise.all([
+          ['balafon', BALAFON],
+          ['piano', PIANO],
+          ['rhodes', RHODES],
+          ['pluck', PLUCK],
+          ['pad', PAD],
+          ['steel_drum', STEEL_DRUM],
+        ].map(async ([key, asset]) => {
+          const sound = await loadSound(asset);
+          return [key, sound] as [string, Audio.Sound | null];
+        }));
+
+        // Load click sounds
+        const clickSounds = await Promise.all(
+          Object.entries(CLICK_SOUNDS).map(async ([key, asset]) => {
+            const sound = await loadSound(asset);
+            return [`click${key}`, sound] as [string, Audio.Sound | null];
+          })
+        );
+
+        // Store successfully loaded sounds
+        [...instrumentSounds, ...clickSounds].forEach(([key, sound]) => {
+          if (sound) {
+            soundObjects[key as keyof SoundObjects] = sound;
+          }
+        });
+
+        // Verify essential sounds are loaded
+        const hasEssentialSounds = soundObjects[currentInstrument] && 
+                                 soundObjects.click1 && 
+                                 soundObjects.click2 && 
+                                 soundObjects.click3 && 
+                                 soundObjects.click4;
+
+        if (!hasEssentialSounds) {
+          throw new Error('Failed to load essential sounds');
+        }
+
+        isAudioInitialized = true;
+        logDebug('Mobile audio initialization complete');
+        return true;
+
+      } catch (error) {
+        console.error('Error in mobile audio initialization:', error);
+        await cleanup();
+        isAudioInitialized = false;
+        return false;
+      } finally {
+        initializationPromise = null;
+      }
+    })();
+
     return initializationPromise;
   }
-
-  // Start new initialization
-  initializationPromise = (async () => {
-    try {
-      console.log('Starting audio initialization...');
-      
-      // First, clean up any existing audio resources
-      await cleanup();
-      
-      // Configure audio mode
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
-        shouldDuckAndroid: false,
-        interruptionModeIOS: 1,  // Audio.InterruptionModeIOS.DoNotMix
-        interruptionModeAndroid: 1,  // Audio.InterruptionModeAndroid.DoNotMix
-        playThroughEarpieceAndroid: false,
-        allowsRecordingIOS: false,
-      });
-
-      // Initialize sound objects with proper error handling
-      const soundPromises = Object.entries({
-        balafon: BALAFON,
-        piano: PIANO,
-        rhodes: RHODES,
-        pluck: PLUCK,
-        pad: PAD,
-        steel_drum: STEEL_DRUM,
-      }).map(async ([key, asset]) => {
-        try {
-          const { sound } = await Audio.Sound.createAsync(asset, { shouldPlay: false });
-          return [key, sound] as [string, Audio.Sound];
-        } catch (e) {
-          console.error(`Failed to load ${key} sound:`, e);
-          return [key, null] as [string, null];
-        }
-      });
-
-      const results = await Promise.all(soundPromises);
-      results.forEach(([key, sound]) => {
-        if (sound) {
-          soundObjects[key as InstrumentType] = sound;
-        }
-      });
-
-      // Initialize click sounds with proper error handling
-      const clickPromises = Object.entries(CLICK_SOUNDS).map(async ([key, asset]) => {
-        try {
-          const { sound } = await Audio.Sound.createAsync(asset, { shouldPlay: false });
-          return [key, sound] as [string, Audio.Sound];
-        } catch (e) {
-          console.error(`Failed to load click sound ${key}:`, e);
-          return [key, null] as [string, null];
-        }
-      });
-
-      const clickResults = await Promise.all(clickPromises);
-      clickResults.forEach(([key, sound]) => {
-        if (sound) {
-          soundObjects[`click${key}`] = sound;
-        }
-      });
-
-      // Verify that essential sounds were loaded
-      const hasEssentialSounds = soundObjects[currentInstrument] && 
-                                soundObjects.click1 && 
-                                soundObjects.click2 && 
-                                soundObjects.click3 && 
-                                soundObjects.click4;
-
-      if (!hasEssentialSounds) {
-        throw new Error('Failed to load essential sounds');
-      }
-
-      isAudioInitialized = true;
-      console.log('Audio initialization complete');
-      return true;
-
-    } catch (error) {
-      console.error('Error in audio initialization:', error);
-      await cleanup();
-      isAudioInitialized = false;
-      return false;
-    } finally {
-      initializationPromise = null;
-    }
-  })();
-
-  return initializationPromise;
 };
 
-// Play a note
+// Play a note (mobile optimized)
 export const playNote = async (midiNote: number) => {
-  try {
-    // Get the base sound for the current instrument
-    const baseSound = soundObjects[currentInstrument];
-    if (!baseSound) {
-      console.error('No base sound loaded for current instrument');
-      return;
-    }
-
-    // Create a new sound instance for this note
-    const { sound: noteSound } = await Audio.Sound.createAsync(
-      {
-        balafon: BALAFON,
-        piano: PIANO,
-        rhodes: RHODES,
-        pluck: PLUCK,
-        pad: PAD,
-        steel_drum: STEEL_DRUM,
-      }[currentInstrument],
-      { 
-        shouldPlay: false,
-        volume: 1.0,
-        rate: Math.pow(2, (midiNote - 60) / 12), // Set pitch shift rate during creation
-        shouldCorrectPitch: true,
+  if (Platform.OS === 'web') {
+    try {
+      // Initialize audio context if needed
+      if (!audioContext || audioContext.state === 'closed') {
+        await initAudio();
       }
-    );
+      
+      if (!audioContext) {
+        throw new Error('Failed to initialize audio context');
+      }
 
-    // Play the sound immediately
-    await noteSound.playAsync();
+      // Ensure audio context is running
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+      }
 
-    // Store for cleanup
-    const noteKey = `${currentInstrument}_${midiNote}`;
-    soundObjects[noteKey] = noteSound;
+      // Stop any existing note
+      await stopNote(midiNote);
 
-    logDebug(`Playing note ${midiNote} with instrument ${currentInstrument}`);
-  } catch (e) {
-    console.error(`Error playing note ${midiNote}:`, e);
+      // Cache current time to avoid multiple property access
+      const currentTime = audioContext.currentTime;
+
+      // Create oscillator and gain node
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      // Set oscillator type based on instrument
+      switch (currentInstrument) {
+        case 'piano':
+          oscillator.type = 'triangle';
+          break;
+        case 'rhodes':
+          oscillator.type = 'sine';
+          break;
+        case 'pluck':
+          oscillator.type = 'sawtooth';
+          break;
+        case 'pad':
+          oscillator.type = 'sine';
+          break;
+        case 'steel_drum':
+          oscillator.type = 'triangle';
+          break;
+        case 'balafon':
+        default:
+          oscillator.type = 'sine';
+          break;
+      }
+
+      // Set frequency from MIDI note
+      const frequency = 440 * Math.pow(2, (midiNote - 69) / 12);
+      oscillator.frequency.setValueAtTime(frequency, currentTime);
+
+      // Connect nodes
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      // Improved envelope timing
+      gainNode.gain.setValueAtTime(0, currentTime);
+      gainNode.gain.linearRampToValueAtTime(0.7, currentTime + 0.02);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.5);
+
+      // Store references
+      oscillators[midiNote] = oscillator;
+      gainNodes[midiNote] = gainNode;
+
+      // Start oscillator
+      oscillator.start(currentTime);
+
+      // Schedule cleanup
+      setTimeout(() => {
+        stopNote(midiNote);
+      }, 500);
+
+    } catch (e) {
+      console.error('Error playing note on web:', e);
+      // Clean up any partial resources
+      delete oscillators[midiNote];
+      delete gainNodes[midiNote];
+    }
+  } else {
+    try {
+      if (!isAudioInitialized) {
+        await initAudio();
+      }
+
+      // Get the base sound for the current instrument
+      const baseSound = soundObjects[currentInstrument];
+      if (!baseSound) {
+        throw new Error('No base sound loaded for current instrument');
+      }
+
+      // Create a new sound instance with optimized settings
+      const { sound: noteSound } = await Audio.Sound.createAsync(
+        {
+          balafon: BALAFON,
+          piano: PIANO,
+          rhodes: RHODES,
+          pluck: PLUCK,
+          pad: PAD,
+          steel_drum: STEEL_DRUM,
+        }[currentInstrument],
+        { 
+          shouldPlay: false,
+          volume: 1.0,
+          rate: Math.pow(2, (midiNote - 60) / 12),
+          shouldCorrectPitch: true,
+          progressUpdateIntervalMillis: 50,
+          positionMillis: 0
+        }
+      );
+
+      // Store for cleanup with unique key
+      const noteKey = `${currentInstrument}_${midiNote}_${Date.now()}`;
+      soundObjects[noteKey] = noteSound;
+
+      // Play the sound
+      await noteSound.playAsync();
+
+      // Cleanup after sound finishes (typical note duration)
+      setTimeout(async () => {
+        try {
+          if (soundObjects[noteKey]) {
+            await soundObjects[noteKey]?.unloadAsync();
+            delete soundObjects[noteKey];
+          }
+        } catch (e) {
+          console.warn(`Cleanup error for note ${midiNote}:`, e);
+        }
+      }, 2000);
+
+      logDebug(`Playing note ${midiNote} with instrument ${currentInstrument}`);
+    } catch (e) {
+      console.error(`Error playing note ${midiNote}:`, e);
+    }
   }
 };
 
 // Stop a specific note
 export const stopNote = async (midiNote: number) => {
-  try {
-    const noteKey = `${currentInstrument}_${midiNote}`;
-    const noteSound = soundObjects[noteKey];
-    
-    if (noteSound) {
-      const status = await noteSound.getStatusAsync();
-      if (status.isLoaded) {
-        try {
-          await noteSound.stopAsync();
-        } catch (stopError) {
-          // If stopping fails, proceed to unload
-          console.log(`Note ${midiNote} stop failed, proceeding to unload`);
+  if (Platform.OS === 'web') {
+    try {
+      // Check if oscillator and gain node exist for this note
+      const oscillator = oscillators[midiNote];
+      const gainNode = gainNodes[midiNote];
+      
+      if (!oscillator || !gainNode) {
+        // No oscillator/gain node found for this note, just return
+        return;
+      }
+
+      if (!audioContext) {
+        console.warn('No audio context available');
+        return;
+      }
+
+      // Safely stop the oscillator with proper cleanup
+      const now = audioContext.currentTime;
+      try {
+        // Fade out gain to avoid clicks
+        gainNode.gain.cancelScheduledValues(now);
+        gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+        gainNode.gain.linearRampToValueAtTime(0, now + 0.01);
+
+        // Schedule oscillator stop after fade out
+        setTimeout(() => {
+          try {
+            oscillator.stop(now + 0.02);
+            oscillator.disconnect();
+            gainNode.disconnect();
+          } catch (e) {
+            console.warn('Error stopping oscillator:', e);
+          } finally {
+            // Clean up references
+            delete oscillators[midiNote];
+            delete gainNodes[midiNote];
+          }
+        }, 25);
+      } catch (e) {
+        console.warn('Error during note cleanup:', e);
+        // Force cleanup even if error occurs
+        delete oscillators[midiNote];
+        delete gainNodes[midiNote];
+      }
+    } catch (e) {
+      console.error('Error in stopNote:', e);
+    }
+  } else {
+    try {
+      const noteKey = `${currentInstrument}_${midiNote}`;
+      const noteSound = soundObjects[noteKey];
+      
+      if (noteSound) {
+        const status = await noteSound.getStatusAsync();
+        if (status.isLoaded) {
+          try {
+            await noteSound.stopAsync();
+          } catch (stopError) {
+            // If stopping fails, proceed to unload
+            console.log(`Note ${midiNote} stop failed, proceeding to unload`);
+          }
+          
+          try {
+            await noteSound.unloadAsync();
+          } catch (unloadError) {
+            console.log(`Note ${midiNote} unload failed, removing from sound objects`);
+          }
         }
         
-        try {
-          await noteSound.unloadAsync();
-        } catch (unloadError) {
-          console.log(`Note ${midiNote} unload failed, removing from sound objects`);
-        }
+        // Remove the sound object regardless of errors
+        delete soundObjects[noteKey];
       }
-      
-      // Remove the sound object regardless of errors
-      delete soundObjects[noteKey];
+    } catch (e) {
+      // Log error but don't throw - this prevents the error popup
+      console.log(`Error handling note ${midiNote} cleanup:`, e);
     }
-  } catch (e) {
-    // Log error but don't throw - this prevents the error popup
-    console.log(`Error handling note ${midiNote} cleanup:`, e);
   }
 };
 

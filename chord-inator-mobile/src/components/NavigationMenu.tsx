@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, Animated, Dimensions } from 'react-native';
-import { colors } from '@/constants/colors';
+import { colors } from '../constants/colors';
 import { router } from 'expo-router';
 
 interface NavigationMenuProps {

@@ -3,11 +3,11 @@ import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useState } from "react";
-import { Platform, StyleSheet, View, Text, Pressable } from "react-native";
+import { Platform, StyleSheet, View, Text, Pressable, ActivityIndicator } from "react-native";
 import { ErrorBoundary } from "./error-boundary";
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { Audio } from 'expo-av';
-import { initAudio } from "../utils/audio-utils";
+import { initAudio, cleanup } from "../utils/audio-utils";
 
 export const unstable_settings = {
   // Ensure that reloading on `/modal` keeps a back button present.
@@ -23,12 +23,11 @@ export default function RootLayout() {
   });
   const [audioInitialized, setAudioInitialized] = useState(false);
   const [showAudioPrompt, setShowAudioPrompt] = useState(Platform.OS === 'ios');
+  const [isInitializing, setIsInitializing] = useState(false);
+  const [initError, setInitError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (error) {
-      console.error(error);
-      throw error;
-    }
+    if (error) throw error;
   }, [error]);
 
   useEffect(() => {
@@ -37,10 +36,19 @@ export default function RootLayout() {
     }
   }, [loaded]);
 
-  // Initialize audio when user interacts with the app (required for iOS)
+  // Initialize audio when user interacts with the app
   const handleInitAudio = async () => {
+    if (isInitializing) return;
+    
     try {
+      setIsInitializing(true);
+      setInitError(null);
       console.log('Initializing audio after user interaction...');
+      
+      // First cleanup any existing audio resources
+      await cleanup();
+      
+      // Initialize audio system
       const success = await initAudio();
       
       if (success) {
@@ -48,21 +56,23 @@ export default function RootLayout() {
         setAudioInitialized(true);
         setShowAudioPrompt(false);
       } else {
-        throw new Error('Audio initialization failed');
+        throw new Error('Audio initialization returned false');
       }
     } catch (e) {
       console.error('Failed to initialize audio:', e);
-      setShowAudioPrompt(false);
-      alert('Audio initialization failed. Please restart the app and try again.');
+      setInitError(e instanceof Error ? e.message : 'Unknown error occurred');
+      // Don't hide the prompt on error so user can try again
+    } finally {
+      setIsInitializing(false);
     }
   };
 
-  // Auto-initialize audio on Android (no user interaction required)
+  // Auto-initialize audio on Android
   useEffect(() => {
-    if (Platform.OS === 'android' && !audioInitialized) {
+    if (Platform.OS === 'android' && !audioInitialized && !isInitializing) {
       handleInitAudio();
     }
-  }, [audioInitialized]);
+  }, [audioInitialized, isInitializing]);
 
   // Force landscape orientation
   useEffect(() => {
@@ -128,33 +138,36 @@ export default function RootLayout() {
               <Text style={styles.audioPromptTitle}>Enable Audio</Text>
               <Text style={styles.audioPromptText}>
                 Tap the button below to enable audio playback.
-                This is required for iOS devices to play sounds.
+                {Platform.OS === 'ios' ? ' This is required for iOS devices to play sounds.' : ''}
               </Text>
+              {initError && (
+                <Text style={styles.errorText}>{initError}</Text>
+              )}
               <Pressable 
-                style={styles.audioPromptButton}
+                style={[
+                  styles.audioPromptButton,
+                  isInitializing && styles.audioPromptButtonDisabled
+                ]}
                 onPress={handleInitAudio}
+                disabled={isInitializing}
               >
-                <Text style={styles.audioPromptButtonText}>Enable Audio</Text>
+                {isInitializing ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.audioPromptButtonText}>
+                    {initError ? 'Retry' : 'Enable Audio'}
+                  </Text>
+                )}
               </Pressable>
             </View>
           </View>
         )}
-        <RootLayoutNav />
+        <Stack>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+        </Stack>
       </View>
     </ErrorBoundary>
-  );
-}
-
-function RootLayoutNav() {
-  return (
-    <Stack screenOptions={{ 
-      orientation: 'landscape',
-      headerShown: false,
-      contentStyle: { backgroundColor: '#121212' }
-    }}>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="modal" options={{ presentation: "modal" }} />
-    </Stack>
   );
 }
 
@@ -170,40 +183,51 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 1000,
   },
   audioPromptCard: {
-    backgroundColor: '#1E1E1E',
+    backgroundColor: '#fff',
     borderRadius: 12,
-    padding: 24,
+    padding: 20,
     width: '80%',
     maxWidth: 400,
     alignItems: 'center',
   },
   audioPromptTitle: {
-    color: '#FFFFFF',
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 16,
+    color: '#000',
   },
   audioPromptText: {
-    color: '#CCCCCC',
     fontSize: 16,
     textAlign: 'center',
     marginBottom: 24,
+    color: '#666',
+  },
+  errorText: {
+    color: '#ff3b30',
+    textAlign: 'center',
+    marginBottom: 16,
+    fontSize: 14,
   },
   audioPromptButton: {
-    backgroundColor: '#6200EE',
-    paddingVertical: 12,
+    backgroundColor: '#007AFF',
     paddingHorizontal: 24,
+    paddingVertical: 12,
     borderRadius: 8,
+    minWidth: 120,
+    alignItems: 'center',
+  },
+  audioPromptButtonDisabled: {
+    backgroundColor: '#999',
   },
   audioPromptButtonText: {
-    color: '#FFFFFF',
+    color: '#fff',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
 });

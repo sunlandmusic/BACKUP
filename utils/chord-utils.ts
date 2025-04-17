@@ -1,5 +1,6 @@
 import { Chord, ChordModifier, ChordType, MusicMode, NoteName, noteNames } from '@/types/music';
 import { nanoid } from '@/utils/nanoid';
+import { CGLS_MODE_QUALITIES } from '@/config/CGLS';
 
 // MIDI note number for middle C (C4)
 const MIDDLE_C = 60;
@@ -184,6 +185,9 @@ export const isChordDiatonic = (chord: Chord, key: NoteName, mode: MusicMode): b
 
 // Check if a chord type is diatonic to the current key and mode for any root
 export const isChordTypeDiatonic = (root: NoteName, type: ChordType, mode: MusicMode, currentKey: NoteName): boolean => {
+  // If mode is 'off', all chord types are allowed
+  if (mode === 'off') return true;
+  
   // Get the scale notes for the current key and mode
   const scaleNotes = getScaleNotes(currentKey, mode);
   
@@ -191,96 +195,9 @@ export const isChordTypeDiatonic = (root: NoteName, type: ChordType, mode: Music
   const rootIndex = scaleNotes.indexOf(root);
   if (rootIndex === -1) return false;
 
-  // Define the diatonic chord qualities for each scale degree in all modes
-  const diatonicQualities: Record<MusicMode, Record<number, ChordType[]>> = {
-    off: {
-      0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] // No diatonic chords in 'off' mode
-    },
-    major: {
-      0: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // I
-      1: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // ii
-      2: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // iii
-      3: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // IV
-      4: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // V
-      5: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // vi
-      6: ['dim', 'm7b5', 'dim7'] // vii°
-    },
-    minor: {
-      0: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // i
-      1: ['dim', 'm7b5', 'dim7'], // ii°
-      2: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // III
-      3: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // iv
-      4: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // v
-      5: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // VI
-      6: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'] // VII
-    },
-    ionian: {
-      0: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // I
-      1: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // ii
-      2: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // iii
-      3: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // IV
-      4: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // V
-      5: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // vi
-      6: ['dim', 'm7b5', 'dim7'] // vii°
-    },
-    dorian: {
-      0: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // i
-      1: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // ii
-      2: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // III
-      3: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // IV
-      4: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // v
-      5: ['dim', 'm7b5', 'dim7'], // vi°
-      6: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'] // VII
-    },
-    phrygian: {
-      0: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // i
-      1: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // II
-      2: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // III
-      3: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // iv
-      4: ['dim', 'm7b5', 'dim7'], // v°
-      5: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // VI
-      6: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'] // vii
-    },
-    lydian: {
-      0: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // I
-      1: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // II
-      2: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // iii
-      3: ['dim', 'm7b5', 'dim7'], // iv°
-      4: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // V
-      5: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // vi
-      6: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'] // vii
-    },
-    mixolydian: {
-      0: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // I
-      1: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // ii
-      2: ['dim', 'm7b5', 'dim7'], // iii°
-      3: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // IV
-      4: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // v
-      5: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // vi
-      6: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'] // VII
-    },
-    aeolian: {
-      0: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // i
-      1: ['dim', 'm7b5', 'dim7'], // ii°
-      2: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // III
-      3: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // iv
-      4: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // v
-      5: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // VI
-      6: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'] // VII
-    },
-    locrian: {
-      0: ['dim', 'm7b5', 'dim7'], // i°
-      1: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // II
-      2: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // iii
-      3: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'], // iv
-      4: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // V
-      5: ['major', 'major7', 'major9', 'major11', 'major13', '6', '69', 'sus2', 'sus4'], // VI
-      6: ['minor', 'minor7', 'minor9', 'm11', 'minor13', 'minor6', 'sus2', 'sus4'] // vii
-    }
-  };
-
-  // Get the allowed chord types for the current mode and scale degree
-  const allowedTypes = diatonicQualities[mode]?.[rootIndex] || [];
+  // Get the allowed chord types for this scale degree based on the mode from CGLS config
+  const qualities = CGLS_MODE_QUALITIES[mode];
+  const allowedTypes = qualities[rootIndex] || [];
   
   // Check if the chord type is in the allowed types
   return allowedTypes.includes(type);

@@ -5,7 +5,7 @@ import { colors } from "@/constants/colors";
 import { useChordStore } from "@/stores/chord-store";
 import { Chord, ChordType, NoteName, noteNames } from "@/types/music";
 import { playChord, stopChord, initAudio } from "@/utils/audio-utils";
-import { createChord, getScaleNotes, getMidiNote, getDiatonicChords } from "@/utils/chord-utils";
+import { createChord, getScaleNotes, getMidiNote, getDiatonicChords, isChordTypeDiatonic } from "@/utils/chord-utils";
 import { Eye, Play } from "lucide-react-native";
 import { HorizontalPiano } from "@/components/HorizontalPiano";
 import { SavedChordButton } from "@/components/SavedChordButton";
@@ -654,6 +654,9 @@ export default function ChordComposeScreen() {
                         (!('bassOffset' in item) && selectedChordType === item.type) 
                           ? styles.selectedChordTypeButton 
                           : null,
+                        (!('bassOffset' in item) && pressedNote && isChordTypeDiatonic(pressedNote, item.type, currentMode, currentKey))
+                          ? { backgroundColor: '#FFA500' }
+                          : null
                       ]}
                       onPressIn={() => handleChordTypePress(
                         item.type,

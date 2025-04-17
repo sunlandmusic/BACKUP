@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, Text, StyleSheet } from 'react-native';
+import { Pressable, Text, StyleSheet, View } from 'react-native';
 import { colors } from '@/constants/colors';
 import { ChordType } from '@/types/music';
 
@@ -42,10 +42,6 @@ export const ChordTypeButton: React.FC<ChordTypeButtonProps> = ({
 
   // Determine text color based on chord type
   const getTextColor = () => {
-    if (isMatchingKeyMode) {
-      return '#FFA500'; // Orange color for matching key/mode
-    }
-    
     // All buttons in the bottom row should have white text, plus minor chords
     if (type === 'm11' || type === 'm7b5' || type === 'add9' || type === 'user' || 
         type === 'min' || type === 'min7' || type === 'min9' ||
@@ -58,50 +54,62 @@ export const ChordTypeButton: React.FC<ChordTypeButtonProps> = ({
   };
 
   return (
-    <Pressable
-      style={[
-        styles.button,
-        { backgroundColor: getBackgroundColor() },
-        isSelected && styles.selectedButton,
-        isHighlighted && styles.highlightedButton
-      ]}
-      onPress={onPress}
-    >
-      <Text style={[styles.text, { color: getTextColor() }]}>{label}</Text>
-    </Pressable>
+    <View style={[
+      styles.buttonContainer,
+      isMatchingKeyMode && styles.matchingKeyModeContainer
+    ]}>
+      <Pressable
+        style={[
+          styles.button,
+          { backgroundColor: getBackgroundColor() },
+          isSelected && styles.selectedButton,
+          isHighlighted && styles.highlightedButton,
+        ]}
+        onPress={onPress}
+      >
+        <Text style={[
+          styles.text,
+          { color: getTextColor() },
+          isSelected && styles.selectedText
+        ]}>
+          {label}
+        </Text>
+      </Pressable>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  buttonContainer: {
+    margin: 2,
+    borderRadius: 8,
+    padding: 2,
+  },
+  matchingKeyModeContainer: {
+    borderWidth: 3,
+    borderColor: '#FFA500',
+    backgroundColor: 'rgba(255, 165, 0, 0.1)',
+  },
   button: {
-    width: 78,
-    height: 48,
-    borderRadius: 12,
-    justifyContent: 'center',
+    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    minWidth: 60,
     alignItems: 'center',
-    padding: 8,
-    margin: 4,
-    aspectRatio: 1.5,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 1.5,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    justifyContent: 'center',
   },
   selectedButton: {
     borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  highlightedButton: {
-    borderWidth: 2,
-    borderColor: '#FFC107',
+    borderColor: colors.primary,
   },
   text: {
+    fontSize: 14,
     fontWeight: 'bold',
-    fontSize: 16,
-    textAlign: 'center',
-    transform: [{ rotate: '90deg' }],
+  },
+  selectedText: {
+    color: colors.primary,
+  },
+  highlightedButton: {
+    opacity: 0.8,
   },
 });
