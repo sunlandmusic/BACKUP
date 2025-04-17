@@ -1,7 +1,7 @@
 import React from "react";
 import { Tabs } from "expo-router";
 import { colors } from "@/constants/colors";
-import { Piano, Volume2, Sliders, Music, BookOpen, Settings } from "lucide-react-native";
+import { Piano, Volume2, Sliders, Music } from "lucide-react-native";
 
 export default function TabLayout() {
   return (
@@ -51,20 +51,6 @@ export default function TabLayout() {
         options={{
           title: "PROG",
           tabBarIcon: ({ color }) => <Music size={22} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="songs"
-        options={{
-          title: "SONG",
-          tabBarIcon: ({ color }) => <BookOpen size={22} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="utility"
-        options={{
-          title: "UTILITY",
-          tabBarIcon: ({ color }) => <Settings size={22} color={color} />,
         }}
       />
       <Tabs.Screen
