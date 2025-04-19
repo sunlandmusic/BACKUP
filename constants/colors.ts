@@ -32,9 +32,9 @@ export const colors = {
   // Chord type colors - UPDATED to match the image
   chord: {
     // Top row (green except for yellow 7)
-    major: '#00C853', // Green
-    major7: '#00C853', // Green
-    major9: '#00C853', // Green
+    major: '#007E33', // Darker Green
+    major7: '#007E33', // Darker Green
+    major9: '#007E33', // Darker Green
     '7': '#FFC107', // Yellow
     
     // Second row (purple except for yellow 9)

@@ -12,6 +12,7 @@ import { SavedChordButton } from "@/components/SavedChordButton";
 import { NavigationMenu } from "@/components/NavigationMenu";
 import { usePathname } from "expo-router";
 import { EditButton } from '@/components/EditButton';
+import { ChordTypeButton } from '@/components/ChordTypeButton';
 
 type ChordTypeItem = {
   type: ChordType;
@@ -542,12 +543,8 @@ export default function ChordComposeScreen() {
   }, []);
 
   // Add function to handle grid navigation
-  const handleGridChange = (direction: 'prev' | 'next') => {
-    if (direction === 'prev') {
-      setCurrentGrid(prev => (prev - 1 + totalGrids) % totalGrids);
-    } else {
-      setCurrentGrid(prev => (prev + 1) % totalGrids);
-    }
+  const handleGridChange = () => {
+    setCurrentGrid(prev => (prev + 1) % totalGrids);
   };
 
   const handleClear = () => {
@@ -563,12 +560,27 @@ export default function ChordComposeScreen() {
     }
   };
 
-  // Handle EditButton mode selection
-  const handleModeSelect = (mode: 'delete' | 'copy') => {
-    if (mode === 'delete') {
-      handleClear();
-    } else if (mode === 'copy') {
-      handleCopyPaste();
+  const handleEditPress = () => {
+    setIsEditPopupVisible(prev => !prev);
+  };
+
+  const handleEditOption = (option: 'clear' | 'copy' | 'undo' | 'redo') => {
+    switch (option) {
+      case 'clear':
+        setIsEditMode(true);
+        break;
+      case 'copy':
+        if (lastPressedChord) {
+          setCopiedChord(lastPressedChord);
+          setIsCopyMode(true);
+        }
+        break;
+      case 'undo':
+        // Add undo functionality
+        break;
+      case 'redo':
+        // Add redo functionality
+        break;
     }
     setIsEditPopupVisible(false);
   };
@@ -599,32 +611,14 @@ export default function ChordComposeScreen() {
         <Text style={styles.verticalTitleText}>E</Text>
       </View>
       
-      {/* Grid navigation arrows - now vertically stacked and centered with grid */}
+      {/* Double arrow button centered under grid */}
       <View style={styles.gridNavContainer}>
         <Pressable 
           style={styles.gridNavButton}
-          onPress={() => handleGridChange('prev')}
+          onPress={handleGridChange}
         >
           <View style={styles.arrowCircle}>
-            <Play 
-              size={16} 
-              color={colors.textOffWhite} 
-              style={{ transform: [{ rotate: '180deg' }] }}
-              fill={colors.textOffWhite}
-            />
-          </View>
-        </Pressable>
-        
-        <Pressable 
-          style={styles.gridNavButton}
-          onPress={() => handleGridChange('next')}
-        >
-          <View style={styles.arrowCircle}>
-            <Play 
-              size={16} 
-              color={colors.textOffWhite} 
-              fill={colors.textOffWhite}
-            />
+            <Text style={styles.doubleArrowText}>⇄</Text>
           </View>
         </Pressable>
       </View>
@@ -644,50 +638,26 @@ export default function ChordComposeScreen() {
             <View style={styles.chordTypeGrid}>
               {chordTypeRows[currentGrid].map((row, rowIndex) => (
                 <View key={`row-${rowIndex}`} style={styles.chordTypeRow}>
-                  {row.map((item: { type: ChordType; label: string; color: string; bassOffset?: number | undefined }) => (
-                    <Pressable
-                      key={`${item.type}-${rowIndex}-${row.indexOf(item)}`}
-                      style={[
-                        styles.chordTypeButton,
-                        { backgroundColor: item.color },
-                        ('bassOffset' in item && selectedBassOffset === item.bassOffset) ||
-                        (!('bassOffset' in item) && selectedChordType === item.type) 
-                          ? styles.selectedChordTypeButton 
-                          : null,
-                        (!('bassOffset' in item) && pressedNote && isChordTypeDiatonic(pressedNote, item.type, currentMode, currentKey))
-                          ? { backgroundColor: '#FFA500' }
-                          : null
-                      ]}
-                      onPressIn={() => handleChordTypePress(
-                        item.type,
-                        item.label,
-                        'bassOffset' in item ? item.bassOffset : undefined
+                  {row.map((item, colIndex) => (
+                    <ChordTypeButton
+                      key={`${item.type}-${rowIndex}-${colIndex}`}
+                      type={item.type}
+                      label={item.label}
+                      onPress={() => handleChordTypePress(item.type, item.label, 'bassOffset' in item ? item.bassOffset : undefined)}
+                      isSelected={
+                        Boolean(
+                          ('bassOffset' in item && selectedBassOffset === item.bassOffset) ||
+                          (!('bassOffset' in item) && selectedChordType === item.type)
+                        )
+                      }
+                      isMatchingKeyMode={Boolean(
+                        !('bassOffset' in item) && pressedNote &&
+                        getDiatonicChords(currentKey, currentMode).some((chord: Chord) => 
+                          chord.root === pressedNote && chord.type === item.type
+                        )
                       )}
-                    >
-                      {item.label === 'AUGM7' ? (
-                        <View style={styles.multiLineButtonContent}>
-                          <Text style={[styles.chordTypeText, styles.blackChordTypeText]}>AUG</Text>
-                          <Text style={[styles.chordTypeText, styles.blackChordTypeText]}>M7</Text>
-                        </View>
-                      ) : item.label.includes('BASS') ? (
-                        <View style={styles.multiLineButtonContent}>
-                          <Text style={[styles.chordTypeText, styles.whiteChordTypeText]}>{item.label.split(' ')[0]}</Text>
-                          <Text style={[styles.chordTypeText, styles.whiteChordTypeText]}>BASS</Text>
-                        </View>
-                      ) : (
-                        <Text style={[
-                          styles.chordTypeText,
-                          (item.color === '#000000' || 
-                           item.label === 'm11' || item.label === 'm7b5' || 
-                           item.label === 'ADD9' || item.label === 'U' ||
-                           rowIndex === 1) // Add condition for row 2 (index 1)
-                            ? styles.whiteChordTypeText 
-                            : styles.blackChordTypeText
-                        ]}>
-                          {item.label}
-                        </Text>
-                      )}
-                    </Pressable>
+                      customColor={item.color}
+                    />
                   ))}
                 </View>
               ))}
@@ -834,30 +804,50 @@ export default function ChordComposeScreen() {
       </View>
 
       <View style={styles.editButtonContainer}>
-        <EditButton
-          onClear={handleClear}
-          onCopyPaste={handleCopyPaste}
-          isCopyMode={isCopyMode}
-          lastPressedChord={lastPressedChord}
-        />
+        <Pressable
+          style={styles.editButton}
+          onPress={handleEditPress}
+        >
+          <Text style={styles.editButtonText}>EDIT</Text>
+        </Pressable>
       </View>
 
       {/* Edit popup */}
       {isEditPopupVisible && (
-        <View style={styles.editPopup}>
-          <Pressable
-            style={styles.editPopupButton}
-            onPress={() => handleModeSelect('delete')}
+        <Pressable 
+          style={styles.editPopupOverlay}
+          onPress={() => setIsEditPopupVisible(false)}
+        >
+          <Pressable 
+            style={styles.editPopup}
+            onPress={e => e.stopPropagation()}
           >
-            <Text style={styles.editPopupButtonText}>CLEAR</Text>
+            <Pressable
+              style={styles.editPopupButton}
+              onPress={() => handleEditOption('clear')}
+            >
+              <Text style={styles.editPopupButtonText}>CLEAR</Text>
+            </Pressable>
+            <Pressable
+              style={styles.editPopupButton}
+              onPress={() => handleEditOption('copy')}
+            >
+              <Text style={styles.editPopupButtonText}>COPY/SAVE</Text>
+            </Pressable>
+            <Pressable
+              style={styles.editPopupButton}
+              onPress={() => handleEditOption('undo')}
+            >
+              <Text style={styles.editPopupButtonText}>UNDO</Text>
+            </Pressable>
+            <Pressable
+              style={styles.editPopupButton}
+              onPress={() => handleEditOption('redo')}
+            >
+              <Text style={styles.editPopupButtonText}>REDO</Text>
+            </Pressable>
           </Pressable>
-          <Pressable
-            style={styles.editPopupButton}
-            onPress={() => handleModeSelect('copy')}
-          >
-            <Text style={styles.editPopupButtonText}>COPY/PASTE</Text>
-          </Pressable>
-        </View>
+        </Pressable>
       )}
     </SafeAreaView>
   );
@@ -1046,10 +1036,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   arrowCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.buttonGrey, // Updated to use buttonGrey
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.buttonGrey,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.3)',
     justifyContent: 'center',
@@ -1109,18 +1099,17 @@ const styles = StyleSheet.create({
   },
   gridNavContainer: {
     position: 'absolute',
-    left: 147,
+    left: 182,
     top: 240,
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 48,
+    justifyContent: 'center',
+    zIndex: 10,
   },
   gridNavButton: {
-    width: 36,
-    height: 36,
+    width: 48,
+    height: 48,
     justifyContent: 'center',
     alignItems: 'center',
-    marginVertical: 4, // Add vertical margin to each button
   },
   savedChordsSection: {
     flex: 1,
@@ -1150,7 +1139,7 @@ const styles = StyleSheet.create({
   verticalTitleContainer: {
     position: 'absolute',
     left: -66,
-    top: 170,
+    top: 167,
     flexDirection: 'row',
     transform: [{ rotate: '-90deg' }],
   },
@@ -1163,11 +1152,26 @@ const styles = StyleSheet.create({
   },
   editButtonContainer: {
     position: 'absolute',
-    left: 18,
-    bottom: 39,
+    left: 11,
+    bottom: 37,
     marginRight: -90,
   },
-  editPopup: {
+  editButton: {
+    width: 41,
+    height: 41,
+    borderRadius: 20.5,
+    backgroundColor: colors.buttonGrey,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  editButtonText: {
+    color: colors.textOffWhite,
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  editPopupOverlay: {
     position: 'absolute',
     left: 0,
     right: 0,
@@ -1177,15 +1181,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  editPopup: {
+    backgroundColor: colors.background,
+    padding: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    minWidth: 150,
+  },
   editPopupButton: {
     backgroundColor: colors.buttonGrey,
-    padding: 10,
+    padding: 12,
     borderRadius: 8,
-    marginBottom: 10,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    alignItems: 'center',
   },
   editPopupButtonText: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: 'bold',
+    color: colors.textOffWhite,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  doubleArrowText: {
+    color: colors.textOffWhite,
+    fontSize: 24,
+    fontWeight: '600',
   },
 });

@@ -50,6 +50,8 @@ interface EditModalProps {
   selectedChordIndex: number | null;
   savedChords: (Chord | null)[];
   setSavedChords: (chords: (Chord | null)[]) => void;
+  copiedChord: Chord | null;
+  setCopiedChord: (chord: Chord | null) => void;
 }
 
 const EditModal: React.FC<EditModalProps> = ({ 
@@ -58,7 +60,9 @@ const EditModal: React.FC<EditModalProps> = ({
   setDeleteMode, 
   selectedChordIndex, 
   savedChords, 
-  setSavedChords 
+  setSavedChords,
+  copiedChord,
+  setCopiedChord
 }) => (
   <Modal
     visible={editModalVisible}
@@ -92,23 +96,22 @@ const EditModal: React.FC<EditModalProps> = ({
             style={styles.modalButton}
             onPress={() => {
               if (selectedChordIndex !== null) {
-                // Copy the chord
                 const chord = savedChords[selectedChordIndex];
-                if (chord) {
-                  // Find the first empty slot
-                  const emptyIndex = savedChords.findIndex((c: Chord | null) => c === null);
-                  if (emptyIndex !== -1) {
-                    const newChords = [...savedChords];
-                    newChords[emptyIndex] = { ...chord };
-                    setSavedChords(newChords);
-                  }
+                if (copiedChord && !chord) {
+                  // Paste the copied chord if we have one and the slot is empty
+                  const newChords = [...savedChords];
+                  newChords[selectedChordIndex] = { ...copiedChord };
+                  setSavedChords(newChords);
+                } else if (chord) {
+                  // Copy the chord if the slot has a chord
+                  setCopiedChord({ ...chord });
                 }
                 setEditModalVisible(false);
                 setDeleteMode(false);
               }
             }}
           >
-            <Text style={styles.modalButtonText}>Copy</Text>
+            <Text style={styles.modalButtonText}>Copy/Paste</Text>
           </Pressable>
         </View>
       </View>

@@ -45,15 +45,9 @@ const ProgressionIcon = () => (
   </View>
 );
 
-const SongIcon = () => (
+const GridIcon = () => (
   <View style={styles.customIcon}>
-    <Text style={styles.iconText}>📄</Text>
-  </View>
-);
-
-const UtilityIcon = () => (
-  <View style={styles.customIcon}>
-    <Text style={styles.iconText}>⚙️</Text>
+    <Text style={styles.iconText}>📊</Text>
   </View>
 );
 
@@ -77,47 +71,52 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({
     }).start();
   }, [visible, slideAnim]);
   
+  // Navigation items with their routes as a const to ensure type safety
+  const routes = {
+    chord: '/(tabs)',
+    sounds: '/(tabs)/sounds',
+    prog: '/(tabs)/progressions',
+    user: '/(tabs)/user-chord',
+    pianoXL: '/(tabs)/16keys',
+    cordinate: '/(tabs)/cordinate'
+  } as const;
+
   // Navigation items
   const navItems = [
     { 
       label: 'CHORD', 
       icon: <PianoIcon />,
-      route: '/(tabs)'
+      route: routes.chord
     },
     { 
       label: 'SOUNDS', 
       icon: <HeadphoneIcon />,
-      route: '/(tabs)/sounds'
+      route: routes.sounds
     },
     { 
       label: 'PROG', 
       icon: <ProgressionIcon />,
-      route: '/(tabs)/progressions'
+      route: routes.prog
     },
     { 
       label: 'USER', 
       icon: <UserIcon />,
-      route: '/(tabs)/user-chord'
-    },
-    { 
-      label: 'SONG', 
-      icon: <SongIcon />,
-      route: '/(tabs)/songs'
-    },
-    { 
-      label: 'UTILITY', 
-      icon: <UtilityIcon />,
-      route: '/(tabs)/utility'
+      route: routes.user
     },
     { 
       label: 'PIANO XL', 
       icon: <PianoIcon />,
-      route: '/(tabs)/16keys'
+      route: routes.pianoXL
     },
+    { 
+      label: 'CORDINATE', 
+      icon: <GridIcon />,
+      route: routes.cordinate
+    }
   ];
   
-  // Handle navigation
-  const handleNavigation = (route: string) => {
+  // Handle navigation with type-safe routes
+  const handleNavigation = (route: typeof routes[keyof typeof routes]) => {
     router.push(route);
     onClose();
   };
@@ -182,7 +181,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     bottom: 0,
-    width: 175, // Reduced by 30% from 250
+    width: 175,
     backgroundColor: colors.surface,
     zIndex: 10,
     paddingTop: 50,
@@ -191,7 +190,7 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 16,
   },
   navItems: {
-    marginTop: -47, // Adjusted from -52 to -47 (moved down by 5px)
+    marginTop: -47,
   },
   navItem: {
     flexDirection: 'row',

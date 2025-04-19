@@ -103,6 +103,41 @@ export const SavedChordButton: React.FC<SavedChordButtonProps> = ({
     return { main, extension };
   };
 
+  const getTextColor = () => {
+    if (!chord) return colors.text;
+
+    // Bright grey text for:
+    // 1. Major chords (major, major7, major9)
+    // 2. 7 chord
+    // 3. Extended major chords (major11, major13)
+    // 4. 6 and 69 chords
+    if (
+      chord.type === 'major' || chord.type === 'major7' || chord.type === 'major9' || 
+      chord.type === '7' ||
+      chord.type === 'major11' || chord.type === 'major13' || 
+      chord.type === '6' || chord.type === '69'
+    ) {
+      return '#E0E0E0';
+    }
+
+    // White text for:
+    // 1. All minor chords (MIN, MIN7, MIN9)
+    // 2. Special chords (m11, m7b5, add9, user)
+    // 3. Bass offset buttons
+    // 4. 9 chord
+    if (
+      chord.type === 'minor' || chord.type === 'minor7' || chord.type === 'minor9' ||
+      chord.type === 'm11' || chord.type === 'm7b5' || chord.type === 'add9' || chord.type === 'user' ||
+      (chord.type === 'minor6' || chord.type === 'minor13' || chord.type === 'minorMajor7' || chord.type === '7sus4') ||
+      chord.type === '9'
+    ) {
+      return '#FFFFFF';
+    }
+    
+    // Black text for all other chord types
+    return '#000000';
+  };
+
   const { main, extension } = getChordDisplayName();
 
   return (
@@ -120,26 +155,12 @@ export const SavedChordButton: React.FC<SavedChordButtonProps> = ({
       delayLongPress={500}
       {...(Platform.OS === 'web' ? { 'data-chord-index': index.toString() } : {})}
     >
-      <Text style={styles.index}>{index}</Text>
+      <Text style={[styles.index, { color: getTextColor() }]}>{index}</Text>
       {chord && (
         <View style={styles.chordContainer}>
-          <Text style={[
-            styles.chordName,
-            { 
-              color: (color === colors.chord.sus2 || 
-                     color === colors.chord.major || 
-                     color === colors.chord.dim) ? '#000000' : colors.text 
-            }
-          ]}>{main}</Text>
+          <Text style={[styles.chordName, { color: getTextColor() }]}>{main}</Text>
           {extension && (
-            <Text style={[
-              styles.chordName,
-              { 
-                color: (color === colors.chord.sus2 || 
-                       color === colors.chord.major || 
-                       color === colors.chord.dim) ? '#000000' : colors.text 
-              }
-            ]}>{extension}</Text>
+            <Text style={[styles.chordName, { color: getTextColor() }]}>{extension}</Text>
           )}
         </View>
       )}
@@ -153,8 +174,8 @@ export const SavedChordButton: React.FC<SavedChordButtonProps> = ({
 const styles = StyleSheet.create({
   button: {
     width: 68,
-    height: 53,
-    borderRadius: 4,
+    height: 48,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -168,7 +189,6 @@ const styles = StyleSheet.create({
     borderColor: '#FFFFFF',
   },
   index: {
-    color: colors.text,
     fontSize: 10,
     position: 'absolute',
     top: 2,
@@ -179,7 +199,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   chordName: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '400',
   },
   saveText: {

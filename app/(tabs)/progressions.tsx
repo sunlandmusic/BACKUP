@@ -66,10 +66,8 @@ export default function ProgressionsScreen() {
   } = useChordStore();
 
   // Add state declarations here
-  const [editMode, setEditMode] = useState(false);
   const [selectedChordIndex, setSelectedChordIndex] = useState<number | null>(null);
   const [copiedChord, setCopiedChord] = useState<Chord | null>(null);
-  const [editModalVisible, setEditModalVisible] = useState(false);
 
   const renderSavedChordsGrid = () => {
     return (
@@ -95,14 +93,7 @@ export default function ProgressionsScreen() {
                   key={`saved-chord-${actualIndex}`}
                   label={`${actualIndex + 1}`}
                   color={savedChords[actualIndex] ? getSavedChordColor(actualIndex) : colors.buttonGrey}
-                  onPress={() => {
-                    if (editMode) {
-                      setSelectedChordIndex(actualIndex);
-                      setEditModalVisible(true);
-                    } else {
-                      handleSavedChordPress(actualIndex);
-                    }
-                  }}
+                  onPress={() => handleSavedChordPress(actualIndex)}
                   onPressOut={handleSavedChordRelease}
                   index={actualIndex + 1}
                   chord={savedChords[actualIndex] || null}
@@ -457,9 +448,8 @@ export default function ProgressionsScreen() {
 
   // Update the step button press handler
   const handleStepPress = (index: number) => {
-    if (editMode) {
+    if (selectedChordIndex !== null) {
       setSelectedChordIndex(index);
-      setEditModalVisible(true);
       return;
     }
 
@@ -481,7 +471,7 @@ export default function ProgressionsScreen() {
   };
 
   const handleDeletePress = () => {
-    setEditMode(!editMode);
+    setDeleteMode(!deleteMode);
   };
   
   const [selectedChordType, setSelectedChordType] = useState<ChordType | null>(null);
@@ -702,9 +692,8 @@ export default function ProgressionsScreen() {
 
   // Update the saved chord press handler
   const handleSavedChordPress = (index: number) => {
-    if (editMode) {
+    if (selectedChordIndex !== null) {
       setSelectedChordIndex(index);
-      setEditModalVisible(true);
       return;
     }
 
@@ -718,9 +707,6 @@ export default function ProgressionsScreen() {
   // Handle saved chord release - immediately stop sound and clear highlight
   const handleSavedChordRelease = () => {
     void stopAllSounds();
-    
-    // Don't clear the current chord when releasing the button
-    // setCurrentChord(null);
   };
 
   // Handle saving current chord
@@ -739,32 +725,31 @@ export default function ProgressionsScreen() {
 
   // Update the chord type handling
   const getSavedChordColor = (index: number) => {
-    if (savedChords.length <= index) return colors.buttonGrey;
-    
     const chord = savedChords[index];
     if (!chord) return colors.buttonGrey;
-    
-    switch (chord.type) {
-      case 'major': return colors.chord.major;
-      case 'minor': return colors.chord.minor;
-      case 'dim': return colors.chord.diminished;
-      case 'augmented': return colors.chord.augmented;
-      case '7': return colors.chord.dominant7;
-      case 'major7': return colors.chord.major7;
-      case 'minor7': return colors.chord.minor7;
-      case 'major9': return colors.chord.major9;
-      case 'minor9': return colors.chord.minor9;
-      case '9': return colors.chord['9'];
-      case 'sus2': return colors.chord.sus2;
-      case 'sus4': return colors.chord.sus4;
-      case 'add9': return colors.chord.add9;
-      case 'm7b5': return colors.chord.m7b5;
-      case 'm11': return colors.chord.m11;
-      case 'dim7': return colors.chord.dim7;
-      case '6': return colors.chord.user;
-      case 'user': return colors.chord.user;
-      default: return colors.chord.user;
-    }
+
+    const chordTypeColors: Record<string, string> = {
+      'major': colors.chord.major,
+      'major7': colors.chord.major7,
+      'major9': colors.chord.major9,
+      '7': colors.chord['7'],
+      'minor': colors.chord.minor,
+      'minor7': colors.chord.minor7,
+      'minor9': colors.chord.minor9,
+      '9': colors.chord['9'],
+      'sus2': colors.chord.sus2,
+      'sus4': colors.chord.sus4,
+      'dim': colors.chord.dim,
+      'dim7': colors.chord.dim7,
+      'm11': colors.chord.m11,
+      'm7b5': colors.chord.m7b5,
+      'add9': colors.chord.add9,
+      'user': colors.chord.user,
+      'augmented': colors.chord.augmented,
+      '11': colors.chord['11']
+    };
+
+    return chordTypeColors[chord.type] || colors.buttonGrey;
   };
 
   // Update the chord display name function
@@ -892,7 +877,7 @@ export default function ProgressionsScreen() {
           styles.stepButton,
           chord && styles.stepButtonActive,
           isHighlighted && styles.stepButtonHighlighted,
-          editMode && styles.stepButtonEditMode
+          selectedChordIndex !== null && styles.stepButtonEditMode
         ]}
         onPress={() => handleStepPress(index)}
       >
@@ -902,7 +887,7 @@ export default function ProgressionsScreen() {
         ]}>
           {index + 1}
         </Text>
-        {editMode && chord && (
+        {selectedChordIndex !== null && chord && (
           <View style={styles.editOverlay}>
             <Text style={styles.editOverlayText}>E</Text>
           </View>
@@ -1080,9 +1065,9 @@ export default function ProgressionsScreen() {
     },
     savedChordButton: {
       width: 68,
-      height: 48,  // Restored to original height
+      height: 48,
       backgroundColor: colors.buttonGrey,
-      borderRadius: 8,
+      borderRadius: 24,
       justifyContent: 'center',
       alignItems: 'center',
       position: 'relative',
@@ -1128,7 +1113,7 @@ export default function ProgressionsScreen() {
     stepButton: {
       width: 36,
       height: 36,
-      borderRadius: 18,
+      borderRadius: 8,
       backgroundColor: colors.buttonGrey,
       justifyContent: 'center',
       alignItems: 'center',
@@ -1211,7 +1196,7 @@ export default function ProgressionsScreen() {
       width: 58,
       height: 24,
       backgroundColor: colors.buttonGrey,
-      borderRadius: 4,
+      borderRadius: 8,
       justifyContent: 'center',
       alignItems: 'center',
     },
@@ -1523,22 +1508,9 @@ export default function ProgressionsScreen() {
       fontSize: 16,
       fontWeight: 'bold',
     },
-    editButton: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: colors.buttonGrey,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    editButtonText: {
-      color: colors.text,
-      fontSize: 24,
-      fontWeight: 'bold',
-    },
-    editButtonActive: {
-      backgroundColor: colors.primary,
-    },
+    editButtonContainer: undefined,
+    editButton: undefined,
+    editButtonText: undefined,
     navigationControlButton: {
       width: 32,
       height: 32,
@@ -1563,6 +1535,18 @@ export default function ProgressionsScreen() {
       height: 32,
       justifyContent: 'center',
       alignItems: 'center',
+    },
+    topBar: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 10,
+      paddingTop: 10,
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 10,
     },
   });
 
@@ -1667,9 +1651,8 @@ export default function ProgressionsScreen() {
 
   // Handler for loading saved progression
   const handleSavedProgressionPress = (index: number) => {
-    if (editMode) {
+    if (selectedChordIndex !== null) {
       setSelectedChordIndex(index);
-      setEditModalVisible(true);
       return;
     }
 
@@ -1696,112 +1679,7 @@ export default function ProgressionsScreen() {
   // Add state for edit modal
   const [selectedProgressionIndex, setSelectedProgressionIndex] = useState<number | null>(null);
 
-  // Update EditModal component to handle null selectedChordIndex
-  const EditModal = () => (
-    <Modal
-      visible={editModalVisible}
-      transparent={true}
-      animationType="fade"
-      onRequestClose={() => {
-        setEditModalVisible(false);
-      }}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Edit Options</Text>
-          <View style={styles.modalButtons}>
-            <Pressable 
-              style={styles.modalButton}
-              onPress={() => {
-                if (selectedChordIndex !== null) {
-                  handleClearChord(selectedChordIndex);
-                }
-                setEditModalVisible(false);
-              }}
-            >
-              <Text style={styles.modalButtonText}>Clear</Text>
-            </Pressable>
-            <Pressable 
-              style={styles.modalButton}
-              onPress={() => {
-                if (selectedChordIndex !== null) {
-                  if (copiedChord) {
-                    handlePasteChord(selectedChordIndex);
-                  } else {
-                    handleCopyChord(selectedChordIndex);
-                  }
-                }
-                setEditModalVisible(false);
-              }}
-            >
-              <Text style={styles.modalButtonText}>{copiedChord ? 'Paste' : 'Copy'}</Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-
-  // Add these handler functions near other handler functions
-  const handleClearChord = (index: number) => {
-    const newSavedChords = [...savedChords];
-    newSavedChords[index] = null;
-    storeSaveChord(null, index);
-  };
-
-  const handleCopyChord = (index: number) => {
-    const chord = savedChords[index];
-    if (chord) {
-      setCopiedChord(chord);
-    }
-  };
-
-  const handlePasteChord = (index: number) => {
-    if (copiedChord) {
-      const newSavedChords = [...savedChords];
-      newSavedChords[index] = copiedChord;
-      storeSaveChord(copiedChord, index);
-    }
-  };
-
-  // Handle edit modal actions
-  const handleEditModalAction = (action: 'delete' | 'copy' | 'paste') => {
-    if (!selectedChordIndex) return;
-
-    if (action === 'delete') {
-      // Create a valid empty chord using the utility function
-      const emptyChord = createChord('C', 'major');
-      emptyChord.notes = []; // Empty notes array to indicate no chord
-      storeSaveChord(emptyChord, selectedChordIndex);
-    } else if (action === 'copy' && savedChords[selectedChordIndex]) {
-      setCopiedChord(savedChords[selectedChordIndex]!);
-    } else if (action === 'paste' && copiedChord) {
-      storeSaveChord(copiedChord, selectedChordIndex);
-    }
-
-    setEditModalVisible(false);
-    setSelectedChordIndex(null);
-  };
-
-  // Convert undefined to null for chord type safety
-  const safeChord = (chord: Chord | undefined): Chord | null => chord ?? null;
-
-  // Update the chord handlers to use safeChord
-  const handleChordPress = (chord: Chord | undefined) => {
-    setCurrentChord(safeChord(chord));
-  };
-
-  const handleChordRelease = () => {
-    setCurrentChord(null);
-  };
-
-  // Update handleEditPress to properly handle the edit modal
-  const handleEditPress = () => {
-    setEditModalVisible(true);
-    setSelectedChordIndex(null); // Reset selected chord index when opening modal
-  };
-
-  // Add the missing function
+  // Add the function for handling saved chord page navigation
   const handleSavedChordPageChange = (direction: 'prev' | 'next') => {
     if (direction === 'prev' && savedChordPage > 0) {
       setSavedChordPage(prev => prev - 1);
@@ -1810,126 +1688,75 @@ export default function ProgressionsScreen() {
     }
   };
 
+  // Add edit mode toggle handler
+  const handleEditPress = () => {
+    setEditModalVisible(true);
+  };
+
+  // Add edit mode state
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [copiedProgression, setCopiedProgression] = useState<SavedProgression | null>(null);
+
+  // Add handlers for EditModal actions
+  const handleClear = () => {
+    if (selectedProgressionIndex !== null) {
+      const newProgressions = [...savedProgressions];
+      newProgressions[selectedProgressionIndex] = null;
+      setSavedProgressions(newProgressions);
+      setEditModalVisible(false);
+    }
+  };
+
+  const handleCopyPaste = () => {
+    if (selectedProgressionIndex !== null) {
+      const progression = savedProgressions[selectedProgressionIndex];
+      if (copiedProgression && !progression) {
+        // Paste the copied progression if we have one and the slot is empty
+        const newProgressions = [...savedProgressions];
+        newProgressions[selectedProgressionIndex] = { ...copiedProgression };
+        setSavedProgressions(newProgressions);
+      } else if (progression) {
+        // Copy the progression if the slot has one
+        setCopiedProgression({ ...progression });
+      }
+      setEditModalVisible(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
-      <NavigationMenu visible={menuVisible} onClose={toggleMenu} currentRoute={pathname} />
-      <Pressable style={styles.eyeButton} onPress={toggleMenu}>
-        <Eye color={colors.text} size={24} />
-      </Pressable>
+      
+      {/* Top Bar with Eye button */}
+      <View style={styles.topBar}>
+        <Pressable style={styles.eyeButton} onPress={toggleMenu}>
+          <Eye color={colors.text} size={24} />
+        </Pressable>
+      </View>
 
+      <NavigationMenu visible={menuVisible} onClose={toggleMenu} currentRoute={pathname} />
+      
       {/* Main Content */}
       <View style={styles.mainContent}>
+        {/* Left Content - Saved Chords */}
         <View style={styles.leftContent}>
-          {/* Saved Chords Grid */}
           {renderSavedChordsGrid()}
         </View>
-        
+
+        {/* Right Content - Step Sequencer and Settings */}
         <View style={styles.rightContent}>
-          {/* Settings Buttons */}
+          {/* Settings */}
           <View style={styles.settingsContainer}>
             {renderSettings()}
           </View>
-          
-          {/* Step Sequencer Grid */}
-          <View style={styles.sequencerContainer}>
-            {renderStepSequencer()}
-          </View>
+
+          {/* Step Sequencer */}
+          {renderStepSequencer()}
+
+          {/* Saved Sections */}
+          {renderSavedSections()}
         </View>
       </View>
-
-      {/* Plus/Minus buttons at right */}
-      <View style={styles.plusMinusContainer}>
-        <Pressable 
-          style={styles.plusButton}
-          onPress={() => handleSettingAdjust('up')}
-        >
-          <Text style={styles.plusMinusText}>+</Text>
-        </Pressable>
-        
-        <Pressable 
-          style={styles.minusButton}
-          onPress={() => handleSettingAdjust('down')}
-        >
-          <Text style={styles.plusMinusText}>-</Text>
-        </Pressable>
-      </View>
-
-      {/* Bottom row with save, navigation, and edit buttons */}
-      <View style={styles.bottomControls}>
-        {/* Edit button */}
-        <Pressable 
-          style={[styles.saveButton, editMode && styles.saveButtonActive]}
-          onPress={handleEditPress}
-        >
-          <Text style={styles.saveButtonText}>⋮</Text>
-        </Pressable>
-
-        {/* Left arrow button */}
-        <Pressable 
-          style={styles.savedChordNavButton}
-          onPress={() => handleSavedChordPageChange('prev')}
-          disabled={savedChordPage === 0}
-        >
-          <View style={[styles.arrowCircle, savedChordPage === 0 && styles.arrowCircleDisabled]}>
-            <Play 
-              size={16} 
-              color={savedChordPage === 0 ? colors.textMuted : colors.textOffWhite}
-              style={{ transform: [{ rotate: '180deg' }] }}
-              fill={savedChordPage === 0 ? colors.textMuted : colors.textOffWhite}
-            />
-          </View>
-        </Pressable>
-        
-        {/* Saved progression buttons */}
-        <View style={styles.savedChordButtonsContainer}>
-          {Array.from({ length: 8 }).map((_, index) => {
-            const progressionIndex = savedChordPage * 8 + index;
-            const progression = savedProgressions[progressionIndex];
-            const isActive = activeSavedProgressionIndex === progressionIndex;
-            const isCurrentlyPlaying = currentlyPlayingProgression === progressionIndex;
-            
-            return (
-              <SavedChordButton
-                key={`saved-progression-${progressionIndex}`}
-                label={`${progressionIndex + 1}`}
-                color={progression ? colors.primary : colors.buttonGrey}
-                onPress={() => handleSavedProgressionPress(progressionIndex)}
-                onPressOut={handleSavedProgressionRelease}
-                onLongPress={() => handleSaveCurrentProgression(progressionIndex)}
-                index={progressionIndex + 1}
-                chord={null}
-                saveMode={deleteMode}
-                isHighlighted={isActive || isCurrentlyPlaying}
-                isCurrentlyPlaying={isCurrentlyPlaying}
-              />
-            );
-          })}
-        </View>
-
-        {/* Right arrow button */}
-        <Pressable 
-          style={styles.savedChordNavButtonRight}
-          onPress={() => handleSavedChordPageChange('next')}
-          disabled={savedChordPage >= 1}
-        >
-          <View style={[styles.arrowCircle, savedChordPage >= 1 && styles.arrowCircleDisabled]}>
-            <Play 
-              size={16} 
-              color={savedChordPage >= 1 ? colors.textMuted : colors.textOffWhite}
-              fill={savedChordPage >= 1 ? colors.textMuted : colors.textOffWhite}
-            />
-          </View>
-        </Pressable>
-      </View>
-
-      {/* Navigation Menu */}
-      <NavigationMenu 
-        visible={menuVisible} 
-        onClose={() => setMenuVisible(false)} 
-        currentRoute={pathname}
-      />
-      <EditModal />
     </SafeAreaView>
   );
 }
