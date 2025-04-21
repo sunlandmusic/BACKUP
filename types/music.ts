@@ -36,7 +36,12 @@ export type ChordType =
   | 'augmented7'
   | 'augmentedMajor7'
   | '11'
-  | 'bass';
+  | 'bass'
+  | '7b5'
+  | '7#5'
+  | '9sus'
+  | '13sus'
+  | '7sus';
 
 // Chord object
 export interface Chord {

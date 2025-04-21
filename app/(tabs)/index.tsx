@@ -10,10 +10,11 @@ import { Eye, Play } from "lucide-react-native";
 import { HorizontalPiano } from "@/components/HorizontalPiano";
 import { SavedChordButton } from "@/components/SavedChordButton";
 import { NavigationMenu } from "@/components/NavigationMenu";
-import { usePathname } from "expo-router";
+import { usePathname, router } from "expo-router";
 import { EditButton } from '@/components/EditButton';
 import { ChordTypeButton } from '@/components/ChordTypeButton';
 import { SettingsPanel } from "@/components/SettingsPanel";
+import { UtilButton } from "@/components/UtilButton";
 
 const KEYS: NoteName[] = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as NoteName[];
 const MODES: MusicMode[] = ['off', 'major', 'minor', 'dorian', 'phrygian', 'lydian', 'mixolydian', 'locrian'] as MusicMode[];
@@ -556,6 +557,27 @@ export default function ChordComposeScreen() {
     setIsEditPopupVisible(false);
   };
 
+  // Add new handler functions for UtilButton
+  const handleSoundsPress = () => {
+    // Navigate to sounds page or handle sounds functionality
+    router.push('/sounds');
+  };
+
+  const handleUChordPress = () => {
+    // Handle U Chord functionality
+    console.log('U Chord pressed');
+  };
+
+  const handleScanPress = () => {
+    // Handle Scan functionality
+    console.log('Scan pressed');
+  };
+
+  const handleSavePress = () => {
+    // Handle Save functionality
+    console.log('Save pressed');
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
@@ -582,7 +604,16 @@ export default function ChordComposeScreen() {
         <Text style={styles.verticalTitleText}>E</Text>
       </View>
       
-      {/* Double arrow button centered under grid */}
+      {/* Remove UtilButton from gridNavContainer and add it separately */}
+      <View style={styles.utilButtonContainer}>
+        <UtilButton
+          onSoundsPress={handleSoundsPress}
+          onUChordPress={handleUChordPress}
+          onScanPress={handleScanPress}
+          onSavePress={handleSavePress}
+        />
+      </View>
+
       <View style={styles.gridNavContainer}>
         <Pressable 
           style={styles.gridNavButton}
@@ -1109,5 +1140,12 @@ const styles = StyleSheet.create({
     color: colors.textOffWhite,
     fontSize: 21.6,
     fontWeight: '600',
+  },
+  // Add new style for independent UtilButton container
+  utilButtonContainer: {
+    position: 'absolute',
+    left: 82, // 132 - 50 to move it left independently
+    top: 240,
+    zIndex: 10,
   },
 });

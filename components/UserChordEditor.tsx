@@ -1,22 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { colors } from '@/constants/colors';
-import { Chord, ChordModifier, NoteName, noteNames } from '@/types/music';
-import { ChevronDown, ChevronUp, Play } from 'lucide-react-native';
-import { createChord } from '@/utils/chord-utils';
+import { Chord, NoteName, noteNames, ChordType } from '@/types/music';
+import { Play } from 'lucide-react-native';
 import { playChord, stopChord } from '@/utils/audio-utils';
 
 interface UserChordEditorProps {
-  onSaveUserChord: (chord: Chord) => void;
+  onSaveToU: (chordType: ChordType) => void;
+  onSaveToSlot: (chord: Chord) => void;
 }
 
 export const UserChordEditor: React.FC<UserChordEditorProps> = ({
-  onSaveUserChord
+  onSaveToU,
+  onSaveToSlot
 }) => {
   const [selectedKey, setSelectedKey] = useState<NoteName>('C');
   const [chordTypeIndex, setChordTypeIndex] = useState(0);
-  const [bassOffset, setBassOffset] = useState(0);
-  const [selectedModifier, setSelectedModifier] = useState<ChordModifier>(null);
+  const [bassNote, setBassNote] = useState<NoteName | 'NONE'>('NONE');
   const [isPlaying, setIsPlaying] = useState(false);
   
   // Cleanup effect to stop any playing sounds when component unmounts
@@ -26,48 +26,58 @@ export const UserChordEditor: React.FC<UserChordEditorProps> = ({
     };
   }, []);
   
-  // Chord type names (for display)
+  // Chord types not already in the grid
   const chordTypeNames = [
-    'Major 13',
-    'Minor 13',
-    'Dominant 13',
-    'Major 11',
-    'Dominant 11',
-    'Major 6/9',
-    'Minor 6/9',
-    'Augmented 7',
-    'Diminished Major 7',
-    'Altered',
-    'Suspended 2 & 4',
-    'Lydian',
-    'Phrygian',
-    'Whole Tone',
-    'Quartal',
-    '7sus2',
-    '7sus4',
-    'Custom'
+    '5',      // Power chord
+    '13',     // Major 13
+    'm69',    // Minor 6/9
+    '7b9',    // Dominant 7 flat 9
+    '7#9',    // Dominant 7 sharp 9
+    '7#11',   // Dominant 7 sharp 11
+    '7b13',   // Dominant 7 flat 13
+    'maj9#11', // Major 9 sharp 11
+    'm9b5',   // Minor 9 flat 5
+    '9#11',   // Dominant 9 sharp 11
+    '13b9',   // Dominant 13 flat 9
+    'maj7#5', // Major 7 sharp 5
+    'm11b5',  // Minor 11 flat 5
+    '7alt',   // Altered dominant
+    '7sus2b9', // Dominant 7 sus2 flat 9
+    'dim9',   // Diminished 9
+    'aug9',   // Augmented 9
+    'φ7',     // Half diminished 7
+    '7b5',    // Dominant 7 flat 5
+    '7#5',    // Dominant 7 sharp 5
+    '9sus',   // Dominant 9 sus4
+    '13sus',  // Dominant 13 sus4
+    '7sus',   // Dominant 7 sus4
   ];
   
   // Custom chord intervals for each type
   const chordTypeIntervals: number[][] = [
-    [0, 4, 7, 11, 14, 21], // Major 13
-    [0, 3, 7, 10, 14, 21], // Minor 13
-    [0, 4, 7, 10, 14, 21], // Dominant 13
-    [0, 4, 7, 11, 14, 17], // Major 11
-    [0, 4, 7, 10, 14, 17], // Dominant 11
-    [0, 4, 7, 9, 14], // Major 6/9
-    [0, 3, 7, 9, 14], // Minor 6/9
-    [0, 4, 8, 10], // Augmented 7
-    [0, 3, 6, 11], // Diminished Major 7
-    [0, 4, 7, 10, 13, 15], // Altered (7#9b13)
-    [0, 2, 5, 7], // Suspended 2 & 4
-    [0, 4, 7, 11, 18], // Lydian (maj7#11)
-    [0, 1, 3, 7, 10], // Phrygian (m7b9)
-    [0, 2, 4, 6, 8, 10], // Whole Tone
-    [0, 5, 10, 15], // Quartal
-    [0, 2, 7, 10], // 7sus2
-    [0, 5, 7, 10], // 7sus4
-    [0, 4, 7, 11, 14, 18, 21] // Custom (fully extended)
+    [0, 7],                    // 5 (power chord)
+    [0, 4, 7, 10, 14, 21],    // 13
+    [0, 3, 7, 9, 14],         // m69
+    [0, 4, 7, 10, 13],        // 7b9
+    [0, 4, 7, 10, 15],        // 7#9
+    [0, 4, 7, 10, 18],        // 7#11
+    [0, 4, 7, 10, 20],        // 7b13
+    [0, 4, 7, 11, 14, 18],    // maj9#11
+    [0, 3, 6, 10, 14],        // m9b5
+    [0, 4, 7, 10, 14, 18],    // 9#11
+    [0, 4, 7, 10, 13, 21],    // 13b9
+    [0, 4, 8, 11],            // maj7#5
+    [0, 3, 6, 10, 14, 17],    // m11b5
+    [0, 4, 8, 10, 13, 15],    // 7alt
+    [0, 2, 7, 10, 13],        // 7sus2b9
+    [0, 3, 6, 9, 14],         // dim9
+    [0, 4, 8, 10, 14],        // aug9
+    [0, 3, 6, 10],            // φ7
+    [0, 4, 6, 10],            // 7b5
+    [0, 4, 8, 10],            // 7#5
+    [0, 5, 7, 10, 14],        // 9sus
+    [0, 5, 7, 10, 14, 21],    // 13sus
+    [0, 5, 7, 10],            // 7sus
   ];
   
   // Handle key change
@@ -93,45 +103,40 @@ export const UserChordEditor: React.FC<UserChordEditorProps> = ({
     }
   };
   
-  // Handle bass offset change
-  const handleBassOffsetChange = (direction: 'prev' | 'next') => {
-    if (direction === 'prev') {
-      setBassOffset(Math.max(-3, bassOffset - 1));
-    } else {
-      setBassOffset(Math.min(3, bassOffset + 1));
+  // Handle bass note change
+  const handleBassNoteChange = (direction: 'prev' | 'next') => {
+    if (bassNote === 'NONE') {
+      setBassNote(direction === 'prev' ? noteNames[11] : noteNames[0]);
+      return;
     }
-  };
-  
-  // Handle modifier selection
-  const handleModifierSelect = (modifier: ChordModifier) => {
-    if (selectedModifier === modifier) {
-      setSelectedModifier(null);
-    } else {
-      setSelectedModifier(modifier);
-    }
-  };
-  
-  // Get bass note based on offset
-  const getBassNote = (): NoteName | undefined => {
-    if (bassOffset === 0) return undefined;
     
-    const keyIndex = noteNames.indexOf(selectedKey);
-    const bassIndex = (keyIndex + bassOffset + 12) % 12;
-    return noteNames[bassIndex];
+    const currentIndex = noteNames.indexOf(bassNote as NoteName);
+    if (direction === 'prev') {
+      const newIndex = (currentIndex - 1 + noteNames.length) % noteNames.length;
+      if (newIndex === 11) {
+        setBassNote('NONE');
+      } else {
+        setBassNote(noteNames[newIndex]);
+      }
+    } else {
+      const newIndex = (currentIndex + 1) % noteNames.length;
+      if (newIndex === 0) {
+        setBassNote('NONE');
+      } else {
+        setBassNote(noteNames[newIndex]);
+      }
+    }
   };
   
   // Create the current user chord
   const getCurrentChord = (): Chord => {
-    const bassNote = getBassNote();
-    
     // Create a custom chord with the selected intervals
     const chord: Chord = {
       id: 'user-chord',
       root: selectedKey,
-      type: 'user',
+      type: chordTypeNames[chordTypeIndex] as ChordType,
       notes: [],
-      bassNote,
-      modifier: selectedModifier
+      bassNote: bassNote === 'NONE' ? undefined : bassNote,
     };
     
     // Calculate MIDI notes based on intervals
@@ -143,9 +148,9 @@ export const UserChordEditor: React.FC<UserChordEditorProps> = ({
     );
     
     // Add bass note if different from root
-    if (bassNote) {
+    if (bassNote !== 'NONE') {
       const bassIndex = noteNames.indexOf(bassNote);
-      const bassNoteValue = rootNote + ((bassIndex - rootIndex + 12) % 12);
+      const bassNoteValue = rootNote - 12 + ((bassIndex - rootIndex + 12) % 12); // One octave lower
       
       // Remove any existing instances of the bass note
       chord.notes = chord.notes.filter(note => note % 12 !== bassNoteValue % 12);
@@ -169,7 +174,7 @@ export const UserChordEditor: React.FC<UserChordEditorProps> = ({
     }
   };
   
-  // Handle play button release - immediately stop sound
+  // Handle play button release
   const handlePlayRelease = () => {
     if (isPlaying) {
       stopChord();
@@ -177,22 +182,15 @@ export const UserChordEditor: React.FC<UserChordEditorProps> = ({
     }
   };
   
-  // Handle save button press
-  const handleSave = () => {
-    const chord = getCurrentChord();
-    onSaveUserChord(chord);
-    
-    // Stop any playing sounds
-    stopChord();
+  // Handle save to U button
+  const handleSaveToU = () => {
+    onSaveToU(chordTypeNames[chordTypeIndex] as ChordType);
   };
   
-  // Format bass offset for display
-  const formatBassOffset = (): string => {
-    if (bassOffset === 0) return 'None';
-    
-    const sign = bassOffset > 0 ? '+' : '';
-    const bassNote = getBassNote();
-    return `${sign}${bassOffset} (${bassNote})`;
+  // Handle save to slot button
+  const handleSaveToSlot = () => {
+    const chord = getCurrentChord();
+    onSaveToSlot(chord);
   };
 
   return (
@@ -204,6 +202,20 @@ export const UserChordEditor: React.FC<UserChordEditorProps> = ({
             <Text style={styles.displayLabel}>KEY</Text>
             <Text style={styles.displayValue}>{selectedKey}</Text>
           </View>
+          <View style={styles.buttonGroup}>
+            <Pressable 
+              style={styles.button} 
+              onPress={() => handleKeyChange('prev')}
+            >
+              <Text style={styles.buttonText}>-</Text>
+            </Pressable>
+            <Pressable 
+              style={styles.button}
+              onPress={() => handleKeyChange('next')}
+            >
+              <Text style={styles.buttonText}>+</Text>
+            </Pressable>
+          </View>
         </View>
         
         {/* Chord type selector */}
@@ -212,9 +224,20 @@ export const UserChordEditor: React.FC<UserChordEditorProps> = ({
             <Text style={styles.displayLabel}>CHORD TYPE</Text>
             <Text style={styles.displayValue}>{chordTypeNames[chordTypeIndex]}</Text>
           </View>
-          <Pressable style={styles.saveButton} onPress={handleSave}>
-            <Text style={styles.saveButtonText}>S</Text>
-          </Pressable>
+          <View style={styles.buttonGroup}>
+            <Pressable 
+              style={styles.button}
+              onPress={() => handleChordTypeChange('prev')}
+            >
+              <Text style={styles.buttonText}>-</Text>
+            </Pressable>
+            <Pressable 
+              style={styles.button}
+              onPress={() => handleChordTypeChange('next')}
+            >
+              <Text style={styles.buttonText}>+</Text>
+            </Pressable>
+          </View>
         </View>
         
         {/* Play button */}
@@ -231,26 +254,33 @@ export const UserChordEditor: React.FC<UserChordEditorProps> = ({
         {/* Bass note selector */}
         <View style={styles.controlGroup}>
           <View style={styles.display}>
-            <Text style={styles.displayLabel}>BASS NOTE</Text>
-            <Text style={styles.displayValue}>{formatBassOffset()}</Text>
+            <Text style={styles.displayLabel}>BASS</Text>
+            <Text style={styles.displayValue}>{bassNote}</Text>
           </View>
-          <View style={styles.emptySpace} />
+          <View style={styles.buttonGroup}>
+            <Pressable 
+              style={styles.button}
+              onPress={() => handleBassNoteChange('prev')}
+            >
+              <Text style={styles.buttonText}>-</Text>
+            </Pressable>
+            <Pressable 
+              style={styles.button}
+              onPress={() => handleBassNoteChange('next')}
+            >
+              <Text style={styles.buttonText}>+</Text>
+            </Pressable>
+          </View>
         </View>
       </View>
       
-      {/* Side buttons */}
-      <View style={styles.plusMinusContainer}>
-        <Pressable 
-          style={styles.plusButton}
-          onPress={() => handleKeyChange('next')}
-        >
-          <Text style={styles.plusMinusText}>+</Text>
+      {/* Save buttons */}
+      <View style={styles.saveButtonsContainer}>
+        <Pressable style={styles.saveButton} onPress={handleSaveToU}>
+          <Text style={styles.saveButtonText}>SAVE TYPE TO "U" CHORD</Text>
         </Pressable>
-        <Pressable 
-          style={styles.minusButton}
-          onPress={() => handleKeyChange('prev')}
-        >
-          <Text style={styles.plusMinusText}>-</Text>
+        <Pressable style={styles.saveButton} onPress={handleSaveToSlot}>
+          <Text style={styles.saveButtonText}>SAVE TO NEXT EMPTY SLOT</Text>
         </Pressable>
       </View>
     </View>
@@ -259,30 +289,24 @@ export const UserChordEditor: React.FC<UserChordEditorProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
+    flex: 1,
     padding: 16,
-    marginVertical: 8,
   },
   editorGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    gap: 16,
     marginBottom: 24,
   },
   controlGroup: {
-    width: '24%',
-    marginBottom: 16,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    height: 120,
+    flex: 1,
+    minWidth: 150,
+    backgroundColor: colors.buttonGrey,
+    borderRadius: 12,
+    padding: 12,
   },
   display: {
-    backgroundColor: colors.surfaceLight,
-    borderRadius: 8,
-    padding: 12,
-    alignItems: 'center',
-    width: '100%',
+    marginBottom: 8,
   },
   displayLabel: {
     color: colors.textSecondary,
@@ -294,72 +318,53 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
-  playContainer: {
-    width: '48%',
+  buttonGroup: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  button: {
+    flex: 1,
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+    padding: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+  },
+  buttonText: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  playContainer: {
+    flex: 1,
+    minWidth: 150,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   playButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 40,
     width: 80,
     height: 80,
+    borderRadius: 40,
+    backgroundColor: colors.buttonGrey,
     alignItems: 'center',
     justifyContent: 'center',
   },
   playButtonActive: {
-    backgroundColor: colors.error,
+    backgroundColor: colors.primary,
+  },
+  saveButtonsContainer: {
+    gap: 16,
   },
   saveButton: {
     backgroundColor: colors.primary,
-    borderRadius: 8,
+    borderRadius: 12,
     padding: 16,
     alignItems: 'center',
-    width: '100%',
-    marginTop: 8,
+    justifyContent: 'center',
   },
   saveButtonText: {
     color: colors.text,
     fontSize: 16,
     fontWeight: 'bold',
-  },
-  plusMinusContainer: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    bottom: 0,
-    width: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderLeftWidth: 1,
-    borderLeftColor: colors.border,
-  },
-  minusButton: {
-    width: 40,
-    height: 140,
-    borderRadius: 8,
-    backgroundColor: colors.buttonGrey,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  plusButton: {
-    width: 40,
-    height: 140,
-    borderRadius: 8,
-    backgroundColor: colors.buttonGrey,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  plusMinusText: {
-    color: colors.textOffWhite,
-    fontSize: 28,
-    fontWeight: 'bold',
-  },
-  emptySpace: {
-    width: '100%',
-    height: 40,
   },
 });
