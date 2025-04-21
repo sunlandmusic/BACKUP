@@ -53,14 +53,12 @@ export interface Chord {
 // Scale modes
 export type MusicMode = 
   | 'off' 
-  | 'major' 
-  | 'minor' 
-  | 'ionian' 
+  | 'major'  // ionian
+  | 'minor'  // aeolian
   | 'dorian' 
   | 'phrygian' 
   | 'lydian' 
   | 'mixolydian' 
-  | 'aeolian' 
   | 'locrian';
 
 // Instrument types

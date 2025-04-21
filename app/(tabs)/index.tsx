@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, SafeAreaView, Pressable, Platform, Modal } from
 import { StatusBar } from "expo-status-bar";
 import { colors } from "@/constants/colors";
 import { useChordStore } from "@/stores/chord-store";
-import { Chord, ChordType, NoteName, noteNames } from "@/types/music";
+import { Chord, ChordType, NoteName, MusicMode } from "@/types/music";
 import { playChord, stopChord, initAudio } from "@/utils/audio-utils";
 import { createChord, getScaleNotes, getMidiNote, getDiatonicChords, isChordTypeDiatonic } from "@/utils/chord-utils";
 import { Eye, Play } from "lucide-react-native";
@@ -13,6 +13,12 @@ import { NavigationMenu } from "@/components/NavigationMenu";
 import { usePathname } from "expo-router";
 import { EditButton } from '@/components/EditButton';
 import { ChordTypeButton } from '@/components/ChordTypeButton';
+import { SettingsPanel } from "@/components/SettingsPanel";
+
+const KEYS: NoteName[] = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as NoteName[];
+const MODES: MusicMode[] = ['off', 'major', 'minor', 'dorian', 'phrygian', 'lydian', 'mixolydian', 'locrian'] as MusicMode[];
+
+type SettingType = 'bpm' | 'bars' | 'key' | 'mode' | 'octave' | 'inversion' | 'voicing';
 
 type ChordTypeItem = {
   type: ChordType;
@@ -44,7 +50,7 @@ export default function ChordComposeScreen() {
   const [lastPlayedChord, setLastPlayedChord] = useState<Chord | null>(null);
   
   // For contextual +/- buttons
-  const [selectedControl, setSelectedControl] = useState<'key' | 'mode' | 'inversion' | 'voicing' | 'octave' | null>('key');
+  const [selectedControl, setSelectedControl] = useState<'bpm' | 'bars' | 'key' | 'mode' | 'octave' | 'inversion'>('key');
   
   // For navigation menu
   const [menuVisible, setMenuVisible] = useState(false);
@@ -152,9 +158,9 @@ export default function ChordComposeScreen() {
       let bassNote: NoteName | undefined;
       
       if (selectedBassOffset !== null) {
-        const rootIndex = noteNames.indexOf(noteName);
+        const rootIndex = KEYS.indexOf(noteName);
         const bassIndex = (rootIndex + selectedBassOffset + 12) % 12;
-        bassNote = noteNames[bassIndex];
+        bassNote = KEYS[bassIndex];
       }
       
       // Create the chord with the primary type
@@ -233,45 +239,25 @@ export default function ChordComposeScreen() {
     }
   };
   
-  // Handle contextual +/- button press
+  // Handle value adjustments
   const handleAdjustValue = (direction: 'up' | 'down') => {
-    if (direction === 'down') {
-      const now = Date.now();
-      if (now - lastMinusPress < 300 && pressedChordIndex !== null) { // 300ms for double tap
-        // Delete the chord at pressedChordIndex
-        const newSavedChords = [...savedChords];
-        newSavedChords[pressedChordIndex] = null;
-        setSavedChords(newSavedChords);
-        setCurrentChord(null);
-        setPressedChordIndex(null);
-        return;
-      }
-      setLastMinusPress(now);
-    }
-    
-    if (!selectedControl) return;
-    
     switch (selectedControl) {
       case 'key':
-        const currentKeyIndex = noteNames.indexOf(currentKey);
-        const newKeyIndex = direction === 'up' 
-          ? (currentKeyIndex + 1) % noteNames.length
-          : (currentKeyIndex - 1 + noteNames.length) % noteNames.length;
-        setCurrentKey(noteNames[newKeyIndex]);
+        const currentIndex = KEYS.indexOf(currentKey);
+        if (direction === 'up') {
+          setCurrentKey(KEYS[(currentIndex + 1) % KEYS.length]);
+        } else {
+          setCurrentKey(KEYS[(currentIndex - 1 + KEYS.length) % KEYS.length]);
+        }
         break;
         
       case 'mode':
-        const modes = ['off', 'major', 'minor', 'ionian', 'dorian', 'phrygian', 'lydian', 'mixolydian', 'aeolian', 'locrian'];
-        const currentModeIndex = modes.indexOf(currentMode);
-        let newModeIndex;
-        
+        const modeIndex = MODES.indexOf(currentMode);
         if (direction === 'up') {
-          newModeIndex = (currentModeIndex + 1) % modes.length;
+          setCurrentMode(MODES[(modeIndex + 1) % MODES.length]);
         } else {
-          newModeIndex = (currentModeIndex - 1 + modes.length) % modes.length;
+          setCurrentMode(MODES[(modeIndex - 1 + MODES.length) % MODES.length]);
         }
-        
-        setCurrentMode(modes[newModeIndex] as any);
         break;
         
       case 'octave':
@@ -283,26 +269,9 @@ export default function ChordComposeScreen() {
         break;
         
       case 'inversion':
-        let newInversion;
-        if (direction === 'up') {
-          newInversion = inversion === -2 ? -1 :
-                         inversion === -1 ? 0 :
-                         inversion === 0 ? 1 :
-                         inversion === 1 ? 2 : inversion;
-        } else {
-          newInversion = inversion === 2 ? 1 :
-                         inversion === 1 ? 0 :
-                         inversion === 0 ? -1 :
-                         inversion === -1 ? -2 : inversion;
-        }
-        setInversion(newInversion);
-        break;
-        
-      case 'voicing':
-        if (direction === 'up') {
-          setVoicing(prev => prev < 3 ? prev + 1 : prev);
-        } else {
-          setVoicing(prev => prev > -3 ? prev - 1 : prev);
+        const newInversion = direction === 'up' ? inversion + 1 : inversion - 1;
+        if (newInversion >= -2 && newInversion <= 2) {
+          setInversion(newInversion);
         }
         break;
     }
@@ -408,8 +377,10 @@ export default function ChordComposeScreen() {
   };
 
   // Handle control selection
-  const handleControlSelect = (control: 'key' | 'mode' | 'inversion' | 'voicing' | 'octave') => {
-    setSelectedControl(control);
+  const handleControlSelect = (control: 'bpm' | 'bars' | 'key' | 'mode' | 'octave' | 'inversion' | '') => {
+    if (control !== '') {
+      setSelectedControl(control);
+    }
   };
 
   // Get chord display name for settings panel
@@ -667,44 +638,15 @@ export default function ChordComposeScreen() {
           {/* Right side - Piano Keyboard */}
           <View style={styles.pianoSection}>
             {/* Settings panel at top of piano section */}
-            <View style={styles.settingsPanel}>
-              <Pressable 
-                style={[styles.settingItem, selectedControl === 'key' && styles.selectedSettingItem]} 
-                onPress={() => handleControlSelect('key')}
-              >
-                <Text style={styles.settingLabel}>KEY</Text>
-                <Text style={styles.settingValue}>{currentKey}</Text>
-              </Pressable>
-              
-              <Pressable 
-                style={[styles.settingItem, selectedControl === 'mode' && styles.selectedSettingItem]} 
-                onPress={() => handleControlSelect('mode')}
-              >
-                <Text style={styles.settingLabel}>MODE</Text>
-                <Text style={styles.settingValue}>{currentMode.toUpperCase()}</Text>
-              </Pressable>
-              
-              <Pressable 
-                style={[styles.settingItem, selectedControl === 'octave' && styles.selectedSettingItem]} 
-                onPress={() => handleControlSelect('octave')}
-              >
-                <Text style={styles.settingLabel}>OCT</Text>
-                <Text style={styles.settingValue}>{octave}</Text>
-              </Pressable>
-              
-              <Pressable 
-                style={[styles.settingItem, selectedControl === 'inversion' && styles.selectedSettingItem]} 
-                onPress={() => handleControlSelect('inversion')}
-              >
-                <Text style={styles.settingLabel}>INV</Text>
-                <Text style={styles.settingValue}>{inversion}</Text>
-              </Pressable>
-              
-              <View style={styles.chordDisplayItem}>
-                <Text style={styles.settingLabel}>CHORD</Text>
-                <Text style={styles.chordDisplayValue}>{getCurrentChordDisplay()}</Text>
-              </View>
-            </View>
+            <SettingsPanel
+              mode={currentMode}
+              octave={octave}
+              chord={getCurrentChordDisplay()}
+              selectedKey={currentKey}
+              inversion={inversion}
+              selectedSetting={selectedControl}
+              onSettingSelect={handleControlSelect}
+            />
             
             {/* Piano keyboard */}
             <View style={styles.horizontalPianoContainer}>
@@ -953,46 +895,6 @@ const styles = StyleSheet.create({
     marginLeft: -49, // Changed from -47 to -49 to move left by 2 more pixels
     marginRight: 5,
   },
-  // Settings panel above piano
-  settingsPanel: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-    paddingHorizontal: 5,
-    height: 67, // Height set to 67px as requested
-  },
-  settingItem: {
-    alignItems: 'center',
-    padding: 5,
-    borderRadius: 4,
-    justifyContent: 'center', // Center content vertically
-  },
-  chordDisplayItem: {
-    alignItems: 'center',
-    padding: 5,
-    borderRadius: 4,
-    justifyContent: 'center',
-    flex: 2, // Give more space to the chord display
-  },
-  selectedSettingItem: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  settingLabel: {
-    color: colors.textSecondary,
-    fontSize: 12,
-    marginBottom: 2,
-    fontWeight: '400',
-  },
-  settingValue: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '400',
-  },
-  chordDisplayValue: {
-    color: colors.text,
-    fontSize: 28,
-    fontWeight: '400',
-  },
   // Piano keyboard container
   horizontalPianoContainer: {
     width: '100%',
@@ -1106,8 +1008,8 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   gridNavButton: {
-    width: 48,
-    height: 48,
+    width: 43.2,
+    height: 43.2,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1205,7 +1107,7 @@ const styles = StyleSheet.create({
   },
   doubleArrowText: {
     color: colors.textOffWhite,
-    fontSize: 24,
+    fontSize: 21.6,
     fontWeight: '600',
   },
 });

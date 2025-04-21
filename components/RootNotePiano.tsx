@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { View, Pressable, Text, StyleSheet } from 'react-native';
 import { playChord, stopChord } from '@/utils/audio-utils';
 import { colors } from '@/constants/colors';
-import { NoteName, MusicMode } from '@/types/music';
-import { getScaleNotes } from '@/utils/chord-utils';
+import { NoteName, MusicMode, Chord } from '@/types/music';
+import { getScaleNotes, getDiatonicChords } from '@/utils/chord-utils';
+import { useChordStore } from '@/stores/chord-store';
 
 interface RootNotePianoProps {
   onNoteSelect?: (note: string) => void;
@@ -18,6 +19,7 @@ const BLACK_KEY_POSITIONS = [33, 92, 206, 265, 323];
 export function RootNotePiano({ onNoteSelect, selectedKey = 'C', mode = 'major' }: RootNotePianoProps) {
   const [selectedNote, setSelectedNote] = useState<string | null>(null);
   const [scaleNotes, setScaleNotes] = useState<NoteName[]>([]);
+  const { setCurrentChord } = useChordStore();
 
   useEffect(() => {
     if (selectedKey && mode) {
@@ -30,12 +32,26 @@ export function RootNotePiano({ onNoteSelect, selectedKey = 'C', mode = 'major' 
       setSelectedNote(null);
       stopChord();
       onNoteSelect?.('');
+      setCurrentChord(null);
     } else {
       setSelectedNote(note);
-      const midiNote = 60 + ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-        .indexOf(note);
-      playChord([midiNote]);
-      onNoteSelect?.(note);
+      // Get diatonic chords for the current key and mode
+      const diatonicChords = getDiatonicChords(selectedKey, mode);
+      // Find the chord for this note
+      const chord = diatonicChords.find(c => c.root === note);
+      
+      if (chord) {
+        // Play the chord and update the display
+        playChord(chord.notes);
+        setCurrentChord(chord);
+        onNoteSelect?.(note);
+      } else {
+        // If no diatonic chord found, play just the root note
+        const midiNote = 60 + ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+          .indexOf(note);
+        playChord([midiNote]);
+        onNoteSelect?.(note);
+      }
     }
   };
 

@@ -4,7 +4,7 @@ import { colors } from '@/constants/colors';
 
 type SettingType = 'bpm' | 'bars' | 'key' | 'mode' | 'octave' | 'inversion';
 
-interface SettingsPanelProps {
+interface SettingsPanelChordinateProps {
   mode: string;
   octave: number;
   chord: string;
@@ -14,7 +14,7 @@ interface SettingsPanelProps {
   onSettingSelect?: (setting: SettingType | '') => void;
 }
 
-export function SettingsPanel({
+export function SettingsPanelChordinate({
   mode,
   octave,
   chord,
@@ -22,15 +22,17 @@ export function SettingsPanel({
   inversion,
   selectedSetting,
   onSettingSelect
-}: SettingsPanelProps) {
+}: SettingsPanelChordinateProps) {
   const renderModeWithAlternateName = (mode: string) => {
     const upperMode = mode.toUpperCase();
     let alternateName = '';
     
-    // Handle modes with alternate names
     switch (upperMode) {
       case 'MAJOR': alternateName = 'IONIAN'; break;
       case 'MINOR': alternateName = 'AEOLIAN'; break;
+      case 'DORIAN': alternateName = '2ND MODE'; break;
+      case 'PHRYGIAN': alternateName = '3RD MODE'; break;
+      case 'LYDIAN': alternateName = '4TH MODE'; break;
       case 'MIXOLYDIAN': 
         return (
           <View style={styles.modeValueContainer}>
@@ -38,6 +40,7 @@ export function SettingsPanel({
             <Text style={styles.alternateModeName}>LYDIAN</Text>
           </View>
         );
+      case 'LOCRIAN': alternateName = '7TH MODE'; break;
       default: break;
     }
 
@@ -56,48 +59,34 @@ export function SettingsPanel({
     value: string | number,
     settingKey?: SettingType,
     isChord: boolean = false
-  ) => {
-    // Add dynamic font size calculation for chord display
-    const getChordFontSize = (chordName: string) => {
-      const length = chordName.length;
-      if (length <= 5) return 28; // Default size for short names
-      if (length <= 7) return 24;
-      if (length <= 9) return 20;
-      return 16; // Minimum size for very long names
-    };
-
-    return (
-      <Pressable 
-        style={[
-          styles.settingItem,
-          isChord && styles.chordItem,
-          settingKey === 'mode' && styles.modeItem,
-          (settingKey === 'key' || settingKey === 'octave' || settingKey === 'inversion') && styles.keyItem,
-          settingKey && selectedSetting === settingKey && styles.selectedSetting
-        ]}
-        onPress={() => {
-          if (settingKey) {
-            onSettingSelect?.(selectedSetting === settingKey ? '' : settingKey);
-          }
-        }}
-      >
-        <Text style={styles.settingLabel}>{label}</Text>
-        {settingKey === 'mode' ? (
-          renderModeWithAlternateName(value.toString())
-        ) : (
-          <Text style={[
-            styles.settingValue,
-            isChord && [
-              styles.chordValue,
-              { fontSize: getChordFontSize(value.toString()) }
-            ]
-          ]}>
-            {value}
-          </Text>
-        )}
-      </Pressable>
-    );
-  };
+  ) => (
+    <Pressable 
+      style={[
+        styles.settingItem,
+        isChord && styles.chordItem,
+        settingKey === 'mode' && styles.modeItem,
+        (settingKey === 'key' || settingKey === 'octave' || settingKey === 'inversion') && styles.keyItem,
+        settingKey && selectedSetting === settingKey && styles.selectedSetting
+      ]}
+      onPress={() => {
+        if (settingKey) {
+          onSettingSelect?.(selectedSetting === settingKey ? '' : settingKey);
+        }
+      }}
+    >
+      <Text style={styles.settingLabel}>{label}</Text>
+      {settingKey === 'mode' ? (
+        renderModeWithAlternateName(value.toString())
+      ) : (
+        <Text style={[
+          styles.settingValue,
+          isChord && styles.chordValue
+        ]}>
+          {value}
+        </Text>
+      )}
+    </Pressable>
+  );
 
   return (
     <View style={styles.container}>
@@ -117,6 +106,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     paddingHorizontal: 0,
     height: 67,
+    transform: [{ translateX: -10 }],
   },
   settingItem: {
     flex: 1,
@@ -129,15 +119,13 @@ const styles = StyleSheet.create({
     flex: 0.84,
   },
   modeItem: {
-    flex: 0,
-    width: 102,
+    flex: 0.6,
     minWidth: 0,
-    padding: 2,
+    padding: 0,
     margin: 0,
   },
   chordItem: {
     flex: 2,
-    paddingHorizontal: 4, // Add some horizontal padding for longer names
   },
   selectedSetting: {
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
@@ -154,14 +142,12 @@ const styles = StyleSheet.create({
     fontWeight: '400',
   },
   chordValue: {
-    fontSize: 28, // This will be overridden by dynamic sizing
-    textAlign: 'center',
-    width: '100%',
+    fontSize: 28,
   },
   modeValueContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 2,
+    padding: 0,
     margin: 0,
   },
   alternateModeName: {

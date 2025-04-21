@@ -5,7 +5,7 @@ import { colors } from '@/constants/colors';
 interface BassOffsetButtonProps {
   offset: number;
   label: string;
-  onPress: () => void;
+  onPress: (offset: number) => void;
   isSelected?: boolean;
 }
 
@@ -21,7 +21,7 @@ export const BassOffsetButton: React.FC<BassOffsetButtonProps> = ({
         styles.button,
         isSelected && styles.selectedButton
       ]}
-      onPress={onPress}
+      onPress={() => onPress(offset - 12)}
     >
       <Text style={styles.text}>{label}</Text>
     </Pressable>
