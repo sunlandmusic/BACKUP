@@ -6,13 +6,42 @@ import { ChordSelector } from './src/components/ChordSelector';
 import { Piano } from './src/components/Piano';
 import { ProgressionBuilder } from './src/components/ProgressionBuilder';
 import { NavigationMenu } from './src/components/NavigationMenu';
+import { UtilButton } from './src/components/UtilButton';
 
 const Tab = createBottomTabNavigator();
 
 // Wrapper components
-const ChordSelectorScreen = () => (
-  <ChordSelector onSelectChord={() => {}} />
-);
+const ChordSelectorScreen = () => {
+  const handleSoundsPress = () => {
+    // Handle sounds button press
+  };
+
+  const handleUChordPress = () => {
+    // Handle user chord button press
+  };
+
+  const handleScanPress = () => {
+    // Handle scan button press
+  };
+
+  const handleSessionPress = () => {
+    // Handle session button press
+  };
+
+  return (
+    <View style={styles.screenContainer}>
+      <ChordSelector onSelectChord={() => {}} />
+      <View style={styles.utilButtonContainer}>
+        <UtilButton
+          onSoundsPress={handleSoundsPress}
+          onUChordPress={handleUChordPress}
+          onScanPress={handleScanPress}
+          onSessionPress={handleSessionPress}
+        />
+      </View>
+    </View>
+  );
+};
 
 const PianoScreen = () => (
   <Piano />
@@ -54,5 +83,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  screenContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  utilButtonContainer: {
+    position: 'absolute',
+    bottom: 20,
+    right: 60,
   },
 });
