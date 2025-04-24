@@ -3,8 +3,7 @@ import { Modal, View, Text, StyleSheet, Platform, Pressable } from 'react-native
 import { colors } from '@/constants/colors';
 import { UserChordEditor } from './UserChordEditor';
 import { useChordStore } from '@/stores/chord-store';
-import { QRCodeGenerator } from './QRCodeGenerator';
-import { ChordType } from '@/types/music';
+import { ChordType, Chord } from '@/types/music';
 
 interface UserChordPopupProps {
   visible: boolean;
@@ -15,35 +14,31 @@ const UserChordPopup: React.FC<UserChordPopupProps> = ({
   visible,
   onClose,
 }) => {
-  const { setCurrentChord, savedChords, setSavedChords, setUserChordType } = useChordStore();
-  const [showQR, setShowQR] = React.useState(false);
+  const { setCurrentChord, savedChords, saveChord, setUserChordType } = useChordStore();
 
   // Find next empty slot in saved chords
   const findNextEmptySlot = () => {
-    return savedChords.findIndex(chord => chord === null);
+    for (let i = 0; i < 32; i++) {  // MAX_SAVED_CHORDS is 32
+      if (!savedChords[i]) {
+        return i;
+      }
+    }
+    return -1;
   };
 
   // Handle saving chord type to U button
   const handleSaveToU = (chordType: ChordType) => {
-    // Convert chord type to index (assuming this is how it's used in the store)
-    const chordTypeIndex = 0; // This should be the correct index for the user chord type
-    setUserChordType(chordTypeIndex);
+    setUserChordType(chordType);
+    onClose();
   };
 
   // Handle saving to next empty slot
-  const handleSaveToSlot = (chord: any) => {
+  const handleSaveToSlot = (chord: Chord) => {
     const nextEmptySlot = findNextEmptySlot();
     if (nextEmptySlot !== -1) {
-      const newSavedChords = [...savedChords];
-      newSavedChords[nextEmptySlot] = chord;
-      setSavedChords(newSavedChords);
+      saveChord(chord, nextEmptySlot);
+      setCurrentChord(chord); // Update current chord
     }
-  };
-
-  // Handle QR code generation
-  const handleQRGenerate = (qrData: string) => {
-    console.log('QR Code data:', qrData);
-    // You can use this data to sync between devices
   };
 
   if (!visible) return null;
@@ -59,36 +54,20 @@ const UserChordPopup: React.FC<UserChordPopupProps> = ({
       <View style={styles.modalOverlay}>
         <Pressable style={styles.outsideModal} onPress={onClose} />
         <View style={styles.modalContent}>
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>USER CHORD</Text>
-            <Pressable 
-              style={styles.qrButton} 
-              onPress={() => setShowQR(!showQR)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Text style={styles.qrButtonText}>QR</Text>
-            </Pressable>
-            <Pressable 
-              style={styles.closeButton} 
-              onPress={onClose}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Text style={styles.closeButtonText}>×</Text>
-            </Pressable>
-          </View>
+          <Text style={styles.headerTitle}>USER CHORD</Text>
+          <Pressable 
+            style={styles.closeButton} 
+            onPress={onClose}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Text style={styles.closeButtonText}>×</Text>
+          </Pressable>
           
           <View style={styles.content}>
-            {showQR ? (
-              <View style={styles.qrContainer}>
-                <Text style={styles.qrText}>Scan to open on mobile:</Text>
-                <QRCodeGenerator size={200} onGenerate={handleQRGenerate} />
-              </View>
-            ) : (
-              <UserChordEditor
-                onSaveToU={handleSaveToU}
-                onSaveToSlot={handleSaveToSlot}
-              />
-            )}
+            <UserChordEditor
+              onSaveToU={handleSaveToU}
+              onSaveToSlot={handleSaveToSlot}
+            />
           </View>
         </View>
       </View>
@@ -99,7 +78,7 @@ const UserChordPopup: React.FC<UserChordPopupProps> = ({
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'black',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -111,41 +90,25 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   modalContent: {
-    backgroundColor: colors.background,
-    borderRadius: 16,
+    backgroundColor: 'transparent',
     width: Platform.OS === 'web' ? '80%' : '90%',
     maxWidth: 1000,
     maxHeight: Platform.OS === 'web' ? '80%' : '90%',
     padding: 20,
     position: 'relative',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-    position: 'relative',
+    top: -100,
   },
   headerTitle: {
     color: colors.text,
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 24,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 20,
   },
   closeButton: {
     position: 'absolute',
-    right: 0,
-    top: 0,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.buttonGrey,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  qrButton: {
-    position: 'absolute',
-    right: 40,
-    top: 0,
+    left: 20,
+    top: 13,
     width: 32,
     height: 32,
     borderRadius: 16,
@@ -158,23 +121,54 @@ const styles = StyleSheet.create({
     fontSize: 24,
     lineHeight: 24,
   },
-  qrButtonText: {
-    color: colors.text,
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
   content: {
     flex: 1,
+    backgroundColor: 'transparent',
   },
-  qrContainer: {
+  saveButton: {
+    backgroundColor: colors.chord.m11, // Dark purple from our color palette
+    borderRadius: 12,
+    padding: 24,
+    height: 90,
+    width: '38%',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
   },
-  qrText: {
-    color: colors.text,
-    fontSize: 16,
-    marginBottom: 20,
+  plusMinusContainer: {
+    position: 'absolute',
+    right: -91,
+    top: 50,
+    bottom: -50,
+    width: 91,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderLeftWidth: 1,
+    borderLeftColor: colors.border,
+    backgroundColor: colors.buttonGrey,
+    borderRadius: 8,
+  },
+  plusButton: {
+    width: 91,
+    height: 218,
+    borderRadius: 4,
+    backgroundColor: colors.buttonGrey,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  minusButton: {
+    width: 91,
+    height: 218,
+    borderRadius: 4,
+    backgroundColor: colors.buttonGrey,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  plusMinusText: {
+    color: colors.textOffWhite,
+    fontSize: 44,
+    fontWeight: 'bold',
   },
 });
 

@@ -312,7 +312,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.error,
   },
   saveButton: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#FF0000',
     borderRadius: 8,
     padding: 16,
     alignItems: 'center',
@@ -329,15 +329,15 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-    width: 40,
+    width: 44,
     justifyContent: 'center',
     alignItems: 'center',
     borderLeftWidth: 1,
     borderLeftColor: colors.border,
   },
   minusButton: {
-    width: 40,
-    height: 140,
+    width: 44,
+    height: 154,
     borderRadius: 8,
     backgroundColor: colors.buttonGrey,
     justifyContent: 'center',
@@ -345,8 +345,8 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   plusButton: {
-    width: 40,
-    height: 140,
+    width: 44,
+    height: 154,
     borderRadius: 8,
     backgroundColor: colors.buttonGrey,
     justifyContent: 'center',
@@ -355,7 +355,7 @@ const styles = StyleSheet.create({
   },
   plusMinusText: {
     color: colors.textOffWhite,
-    fontSize: 28,
+    fontSize: 31,
     fontWeight: 'bold',
   },
   emptySpace: {

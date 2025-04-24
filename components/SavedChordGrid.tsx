@@ -1,8 +1,8 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, Platform, TouchableOpacity } from 'react-native';
 import { colors } from '@/constants/colors';
 import { Chord } from '@/types/music';
-import { ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, ArrowLeftRight } from 'lucide-react-native';
 import { SavedChordButton } from './SavedChordButton';
 
 interface SavedChordGridProps {
@@ -16,6 +16,9 @@ interface SavedChordGridProps {
   rows?: number;
   activeChordIndex?: number | null;
   saveMode?: boolean;
+  showToggle?: boolean;
+  isSecondPage?: boolean;
+  onTogglePage?: () => void;
 }
 
 export const SavedChordGrid: React.FC<SavedChordGridProps> = ({
@@ -28,7 +31,10 @@ export const SavedChordGrid: React.FC<SavedChordGridProps> = ({
   columns = 4,
   rows = 4,
   activeChordIndex,
-  saveMode = false
+  saveMode = false,
+  showToggle = false,
+  isSecondPage = false,
+  onTogglePage
 }) => {
   const startIndex = currentPage * (columns * rows);
   const endIndex = startIndex + (columns * rows);
@@ -86,19 +92,14 @@ export const SavedChordGrid: React.FC<SavedChordGridProps> = ({
     switch (chord.type) {
       case 'major': return colors.chord.major;
       case 'minor': return colors.chord.minor;
-      case 'diminished': return colors.chord.diminished;
+      case 'dim': return colors.chord.dim;
       case 'augmented': return colors.chord.augmented;
-      case 'dominant7': return colors.chord.dominant7;
-      case 'major7': return colors.chord.major7;
-      case 'minor7': return colors.chord.minor7;
-      case 'major9': return colors.chord.major9;
-      case 'minor9': return colors.chord.minor9;
-      case 'dominant9': return colors.chord.dominant7; // Using dominant7 from colors instead of '9'
+      case '7': return colors.chord['7'];
+      case '9': return colors.chord['9'];
       case 'sus2': return colors.chord.sus2;
       case 'sus4': return colors.chord.sus4;
       case 'add9': return colors.chord.add9;
       case 'm7b5': return colors.chord.m7b5;
-      case 'dim': return colors.chord.dim;
       case 'dim7': return colors.chord.dim7;
       default: return colors.chord.user;
     }
@@ -126,13 +127,24 @@ export const SavedChordGrid: React.FC<SavedChordGridProps> = ({
                   chord={chord}
                   saveMode={saveMode}
                   isHighlighted={isActive}
-                  textColor={rowIndex === 3 ? '#FFFFFF' : undefined}
                 />
               );
             })}
           </View>
         ))}
       </View>
+      
+      {showToggle && (
+        <TouchableOpacity 
+          style={[styles.pageToggle, isSecondPage && styles.pageToggleActive]}
+          onPress={onTogglePage}
+        >
+          <ArrowLeftRight size={24} color={colors.text} />
+          <Text style={styles.pageToggleText}>
+            {isSecondPage ? '17-32' : '1-16'}
+          </Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 };
@@ -140,16 +152,39 @@ export const SavedChordGrid: React.FC<SavedChordGridProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    marginLeft: 165,
+    marginTop: 20,
   },
   grid: {
     width: '100%',
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+    marginBottom: 16,
   },
   row: {
     flexDirection: 'row',
     width: '100%',
     gap: 8,
+  },
+  pageToggle: {
+    backgroundColor: colors.buttonGrey,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+    gap: 8,
+    width: 120,
+    height: 48,
+    marginTop: 16,
+  },
+  pageToggleActive: {
+    backgroundColor: colors.primary,
+  },
+  pageToggleText: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '500',
   },
 });

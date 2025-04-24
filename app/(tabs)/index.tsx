@@ -564,8 +564,8 @@ export default function ChordComposeScreen() {
   };
 
   const handleUChordPress = () => {
-    // Handle U Chord functionality
-    console.log('U Chord pressed');
+    // Navigate to the user chord screen
+    router.push('/user-chord');
   };
 
   const handleScanPress = () => {
@@ -573,9 +573,9 @@ export default function ChordComposeScreen() {
     console.log('Scan pressed');
   };
 
-  const handleSavePress = () => {
-    // Handle Save functionality
-    console.log('Save pressed');
+  const handleSessionPress = () => {
+    // Handle Session functionality
+    console.log('Session pressed');
   };
 
   return (
@@ -610,7 +610,7 @@ export default function ChordComposeScreen() {
           onSoundsPress={handleSoundsPress}
           onUChordPress={handleUChordPress}
           onScanPress={handleScanPress}
-          onSavePress={handleSavePress}
+          onSessionPress={handleSessionPress}
         />
       </View>
 
@@ -805,7 +805,7 @@ export default function ChordComposeScreen() {
               style={styles.editPopupButton}
               onPress={() => handleEditOption('copy')}
             >
-              <Text style={styles.editPopupButtonText}>COPY/SAVE</Text>
+              <Text style={styles.editPopupButtonText}>COPY</Text>
             </Pressable>
             <Pressable
               style={styles.editPopupButton}
@@ -1144,7 +1144,7 @@ const styles = StyleSheet.create({
   // Add new style for independent UtilButton container
   utilButtonContainer: {
     position: 'absolute',
-    left: 82, // 132 - 50 to move it left independently
+    left: 42, // Changed from 62 to 42 to move 20px left
     top: 240,
     zIndex: 10,
   },

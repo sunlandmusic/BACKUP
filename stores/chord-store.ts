@@ -11,7 +11,8 @@ import {
   NoteName, 
   Section, 
   Song, 
-  TimeSignature 
+  TimeSignature,
+  ChordType
 } from '@/types/music';
 import { nanoid } from '@/utils/nanoid';
 import { createChord } from '@/utils/chord-utils';
@@ -37,7 +38,8 @@ interface ChordState {
   savedSections: Section[];
   
   // User chord settings
-  userChordType: number;
+  userChordType: ChordType | null;
+  userChordIntervals: number[];
   userChordBassOffset: number;
   
   // Actions - Chord management
@@ -55,7 +57,8 @@ interface ChordState {
   setIsPlaying: (isPlaying: boolean) => void;
   
   // Actions - User chord
-  setUserChordType: (type: number) => void;
+  setUserChordType: (type: ChordType | null) => void;
+  setUserChordIntervals: (intervals: number[]) => void;
   setUserChordBassOffset: (offset: number) => void;
   
   // Actions - Progression management
@@ -101,7 +104,8 @@ export const useChordStore = create<ChordState>()(
       savedSongs: [],
       savedSections: [],
       
-      userChordType: 0,
+      userChordType: null as ChordType | null,
+      userChordIntervals: [],
       userChordBassOffset: 0,
       
       // Actions - Chord management
@@ -152,7 +156,10 @@ export const useChordStore = create<ChordState>()(
       setIsPlaying: (isPlaying) => set({ isPlaying }),
       
       // Actions - User chord
-      setUserChordType: (type) => set({ userChordType: type }),
+      setUserChordType: (type) => {
+        set({ userChordType: type });
+      },
+      setUserChordIntervals: (intervals) => set({ userChordIntervals: intervals }),
       
       setUserChordBassOffset: (offset) => set({ userChordBassOffset: offset }),
       

@@ -1,9 +1,48 @@
 import { Chord, ChordModifier, ChordType, MusicMode, NoteName, noteNames } from '@/types/music';
 import { nanoid } from '@/utils/nanoid';
 import { CGLS_MODE_QUALITIES } from '@/config/CGLS';
+import { useChordStore } from '../stores/chord-store';
 
 // MIDI note number for middle C (C4)
 const MIDDLE_C = 60;
+
+// Chord intervals (semitones from root)
+export const chordIntervals: Record<ChordType, number[]> = {
+  major: [0, 4, 7],
+  minor: [0, 3, 7],
+  dim: [0, 3, 6],
+  augmented: [0, 4, 8],
+  '7': [0, 4, 7, 10],
+  'major7': [0, 4, 7, 11],
+  'minor7': [0, 3, 7, 10],
+  'major9': [0, 4, 7, 11, 14],
+  'minor9': [0, 3, 7, 10, 14],
+  '9': [0, 4, 7, 10, 14],
+  'sus2': [0, 2, 7],
+  'sus4': [0, 5, 7],
+  'add9': [0, 4, 7, 14],
+  'm7b5': [0, 3, 6, 10],
+  'm11': [0, 3, 7, 10, 14, 17],
+  'dim7': [0, 3, 6, 9],
+  '6': [0, 4, 7, 9],
+  '69': [0, 4, 7, 9, 14],
+  'minor6': [0, 3, 7, 9],
+  'minorMajor7': [0, 3, 7, 11],
+  'major11': [0, 4, 7, 11, 14, 17],
+  'major13': [0, 4, 7, 11, 14, 21],
+  'minor13': [0, 3, 7, 10, 14, 21],
+  '7sus4': [0, 5, 7, 10],
+  'augmented7': [0, 4, 8, 10],
+  'augmentedMajor7': [0, 4, 8, 11],
+  '11': [0, 4, 7, 10, 14, 17],
+  '7b5': [0, 4, 6, 10],
+  '7#5': [0, 4, 8, 10],
+  '9sus': [0, 5, 7, 10, 14],
+  '13sus': [0, 5, 7, 10, 14, 21],
+  '7sus': [0, 5, 7, 10],
+  'user': [], // This will be overridden by userChordIntervals
+  'bass': [0]
+};
 
 // Get MIDI note number from note name and octave
 export const getMidiNote = (note: NoteName, octave: number): number => {
@@ -18,90 +57,49 @@ export const getNoteNameFromMidi = (midiNote: number): NoteName => {
 };
 
 // Get chord notes based on root note and chord type
-export const getChordNotes = (
-  root: NoteName, 
-  type: ChordType, 
-  octave: number = 4, 
-  bassNote?: NoteName,
-  modifier?: ChordModifier
-): number[] => {
-  const rootIndex = noteNames.indexOf(root);
-  const rootNote = MIDDLE_C + (octave - 4) * 12 + rootIndex;
-  
-  // Intervals for different chord types (in semitones)
-  const intervals: Record<ChordType, number[]> = {
-    major: [0, 4, 7],
-    minor: [0, 3, 7],
-    dim: [0, 3, 6],
-    augmented: [0, 4, 8],
-    '7': [0, 4, 7, 10],
-    '9': [0, 4, 7, 10, 14],
-    major7: [0, 4, 7, 11],
-    minor7: [0, 3, 7, 10],
-    major9: [0, 4, 7, 11, 14],
-    minor9: [0, 3, 7, 10, 14],
-    sus2: [0, 2, 7],
-    sus4: [0, 5, 7],
-    add9: [0, 4, 7, 14],
-    'm7b5': [0, 3, 6, 10],
-    'm11': [0, 3, 7, 10, 14, 17],
-    dim7: [0, 3, 6, 9],
-    user: [0, 4, 7], // Default to major, should be overridden
-    'major11': [0, 4, 7, 11, 14, 17],
-    'major13': [0, 4, 7, 11, 14, 17, 21],
-    '6': [0, 4, 7, 9],
-    '69': [0, 4, 7, 9, 14],
-    'minor6': [0, 3, 7, 9],
-    'minor13': [0, 3, 7, 10, 14, 17, 21],
-    'minorMajor7': [0, 3, 7, 11],
-    '7sus4': [0, 5, 7, 10],
-    'augmented7': [0, 4, 8, 10],
-    'augmentedMajor7': [0, 4, 8, 11],
-    '11': [0, 4, 7, 10, 14, 17],
-    'bass': [0] // Just the root note for bass
-  };
-  
-  // Make sure the type exists in our intervals
-  if (!intervals[type]) {
-    console.warn(`Unknown chord type: ${type}, defaulting to major`);
-    type = 'major';
+export const getChordNotes = (rootNote: number, type: ChordType, bassOffset: number = 0): number[] => {
+  const intervals = type === 'user' 
+    ? useChordStore.getState().userChordIntervals
+    : chordIntervals[type];
+    
+  if (type === 'user' && (!intervals || intervals.length === 0)) {
+    return []; // Return empty array if no user chord intervals are set
   }
   
-  // Start with the base chord intervals
-  let notes = [...intervals[type]];
-  
-  // Convert intervals to MIDI notes
-  notes = notes.map(interval => rootNote + interval);
-  
-  // Handle slash chords (different bass note)
-  if (bassNote) {
-    const bassIndex = noteNames.indexOf(bassNote);
-    const bassNoteValue = MIDDLE_C + (octave - 4) * 12 + bassIndex;
-    
-    // Remove any existing instances of the bass note
-    notes = notes.filter(note => note % 12 !== bassNoteValue % 12);
-    
-    // Add the bass note at the beginning
-    notes.unshift(bassNoteValue);
-  }
-  
-  return notes;
+  return [rootNote + bassOffset, ...intervals.map(interval => rootNote + interval)];
 };
 
 // Create a chord object
 export const createChord = (
-  root: NoteName, 
-  type: ChordType, 
-  octave: number = 4, 
+  root: NoteName,
+  type: ChordType,
+  octave: number = 4,
   bassNote?: NoteName,
   modifier?: ChordModifier
-): Chord => {
+): Chord | null => {
+  if (type === 'user') {
+    const { userChordType, userChordIntervals } = useChordStore.getState();
+    if (!userChordType || !userChordIntervals || userChordIntervals.length === 0) {
+      return null; // Return null if no user chord type or intervals are set
+    }
+    return {
+      id: nanoid(),
+      root,
+      type: 'user',
+      notes: [getMidiNote(root, octave), ...userChordIntervals.map(interval => getMidiNote(root, octave) + interval)],
+      bassNote: bassNote || root,
+    };
+  }
+  
+  const notes = getChordNotes(getMidiNote(root, octave), type, getMidiNote(bassNote || root, octave) - getMidiNote(root, octave));
+  if (notes.length === 0) return null;
+  
   return {
     id: nanoid(),
     root,
     type,
-    notes: getChordNotes(root, type, octave, bassNote),
-    bassNote
+    notes,
+    bassNote: bassNote || root
   };
 };
 
@@ -115,9 +113,7 @@ export const getScaleNotes = (key: NoteName, mode: MusicMode): NoteName[] => {
   const modeIntervals: Record<MusicMode, number[]> = {
     off: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
     major: [0, 2, 4, 5, 7, 9, 11],
-    ionian: [0, 2, 4, 5, 7, 9, 11],  // Same as major
     minor: [0, 2, 3, 5, 7, 8, 10],
-    aeolian: [0, 2, 3, 5, 7, 8, 10], // Same as natural minor
     dorian: [0, 2, 3, 5, 7, 9, 10],
     phrygian: [0, 1, 3, 5, 7, 8, 10],
     lydian: [0, 2, 4, 6, 7, 9, 11],
@@ -156,8 +152,7 @@ export const getDiatonicChords = (key: NoteName, mode: MusicMode): Chord[] => {
     // Test each chord type
     allChordTypes.forEach(type => {
       const chord = createChord(root, type);
-      // Only add the chord if all its notes are in the scale
-      if (isChordDiatonic(chord, key, mode)) {
+      if (chord && isChordDiatonic(chord, key, mode)) {
         chords.push(chord);
       }
     });
@@ -291,4 +286,16 @@ export const getChordSuggestions = (previousChord: Chord | null, key: NoteName, 
   }
   
   return suggestions;
+};
+
+export const getChordFromString = (chordString: string): Chord | null => {
+  // Parse chord string to get root, type, and bass note
+  // This is a placeholder implementation
+  return null;
+};
+
+export const getChordFromMidi = (midiNote: number): Chord | null => {
+  // Convert MIDI note to chord
+  // This is a placeholder implementation
+  return null;
 };

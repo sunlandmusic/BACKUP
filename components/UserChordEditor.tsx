@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Modal } from 'react-native';
 import { colors } from '@/constants/colors';
 import { Chord, NoteName, noteNames, ChordType } from '@/types/music';
 import { Play } from 'lucide-react-native';
@@ -18,6 +18,10 @@ export const UserChordEditor: React.FC<UserChordEditorProps> = ({
   const [chordTypeIndex, setChordTypeIndex] = useState(0);
   const [bassNote, setBassNote] = useState<NoteName | 'NONE'>('NONE');
   const [isPlaying, setIsPlaying] = useState(false);
+  const [selectedControl, setSelectedControl] = useState<'key' | 'chord type' | 'bass'>('chord type');
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+  const [saveType, setSaveType] = useState<'u' | 'slot' | null>(null);
+  const [saveMessage, setSaveMessage] = useState('');
   
   // Cleanup effect to stop any playing sounds when component unmounts
   useEffect(() => {
@@ -169,7 +173,11 @@ export const UserChordEditor: React.FC<UserChordEditorProps> = ({
       setIsPlaying(false);
     } else {
       const chord = getCurrentChord();
-      playChord(chord.notes);
+      try {
+        playChord(chord.notes);
+      } catch (error) {
+        // Silently catch AVFoundation errors
+      }
       setIsPlaying(true);
     }
   };
@@ -182,107 +190,217 @@ export const UserChordEditor: React.FC<UserChordEditorProps> = ({
     }
   };
   
-  // Handle save to U button
-  const handleSaveToU = () => {
-    onSaveToU(chordTypeNames[chordTypeIndex] as ChordType);
+  // Handle initiating save process
+  const handleInitiateSave = (type: 'u' | 'slot') => {
+    setSaveType(type);
+    if (type === 'u') {
+      setSaveMessage(`Save "${chordTypeNames[chordTypeIndex]}" as U chord type?`);
+    } else {
+      const chord = getCurrentChord();
+      const chordName = getChordDisplayName(chord);
+      setSaveMessage(`Save "${chordName}" to next empty slot?`);
+    }
+    setShowSaveConfirm(true);
   };
-  
-  // Handle save to slot button
-  const handleSaveToSlot = () => {
-    const chord = getCurrentChord();
-    onSaveToSlot(chord);
+
+  // Handle save confirmation
+  const handleConfirmSave = (confirmed: boolean) => {
+    if (confirmed) {
+      if (saveType === 'u') {
+        onSaveToU(chordTypeNames[chordTypeIndex] as ChordType);
+      } else {
+        const chord = getCurrentChord();
+        onSaveToSlot(chord);
+        // Play the chord when saved
+        try {
+          playChord(chord.notes);
+        } catch (error) {
+          // Silently catch AVFoundation errors
+        }
+      }
+    }
+    setShowSaveConfirm(false);
+    setSaveType(null);
+  };
+
+  // Get chord display name (for saved chord buttons)
+  const getChordDisplayName = (chord: Chord): string => {
+    let displayName = chord.root;
+    switch (chord.type) {
+      case 'major': break;
+      case 'minor': displayName += 'm'; break;
+      case 'dim': displayName += 'dim'; break;
+      case 'augmented': displayName += 'aug'; break;
+      case '7': displayName += '7'; break;
+      case 'major7': displayName += 'maj7'; break;
+      case 'minor7': displayName += 'm7'; break;
+      case 'major9': displayName += 'maj9'; break;
+      case 'minor9': displayName += 'm9'; break;
+      case '9': displayName += '9'; break;
+      case 'sus2': displayName += 'sus2'; break;
+      case 'sus4': displayName += 'sus4'; break;
+      case 'add9': displayName += 'add9'; break;
+      case 'm7b5': displayName += 'm7b5'; break;
+      case 'm11': displayName += 'm11'; break;
+      case 'dim7': displayName += 'dim7'; break;
+      case 'user': displayName += 'U'; break;
+      default: displayName += chord.type;
+    }
+    if (chord.bassNote && chord.bassNote !== chord.root) {
+      displayName += `/${chord.bassNote}`;
+    }
+    return displayName;
+  };
+
+  // Handle value adjustment
+  const handleAdjustValue = (direction: 'up' | 'down') => {
+    switch (selectedControl) {
+      case 'key':
+        handleKeyChange(direction === 'up' ? 'next' : 'prev');
+        break;
+      case 'chord type':
+        handleChordTypeChange(direction === 'up' ? 'next' : 'prev');
+        break;
+      case 'bass':
+        handleBassNoteChange(direction === 'up' ? 'next' : 'prev');
+        break;
+      default:
+        // Default to chord type if nothing is selected
+        handleChordTypeChange(direction === 'up' ? 'next' : 'prev');
+    }
+  };
+
+  // Add click handlers for the control groups
+  const handleControlClick = (control: 'KEY' | 'CHORD TYPE' | 'BASS') => {
+    switch (control) {
+      case 'KEY':
+        setSelectedControl('key');
+        break;
+      case 'CHORD TYPE':
+        setSelectedControl('chord type');
+        break;
+      case 'BASS':
+        setSelectedControl('bass');
+        break;
+    }
+  };
+
+  // Handle minus button press and hold
+  const handleMinusButtonPressIn = () => {
+    handleAdjustValue('down');
+  };
+
+  const handleMinusButtonPressOut = () => {
+    // Stop any continuous adjustment if needed
   };
 
   return (
     <View style={styles.container}>
-      <View style={styles.editorGrid}>
+      {/* Play button */}
+      <View style={styles.playContainer}>
+        <Pressable 
+          style={[styles.playButton, isPlaying && styles.playButtonActive]} 
+          onPressIn={handlePlay}
+          onPressOut={handlePlayRelease}
+        >
+          <Play size={48} color={colors.text} />
+        </Pressable>
+      </View>
+
+      {/* Top row of controls */}
+      <View style={styles.topControls}>
         {/* Key selector */}
-        <View style={styles.controlGroup}>
-          <View style={styles.display}>
-            <Text style={styles.displayLabel}>KEY</Text>
-            <Text style={styles.displayValue}>{selectedKey}</Text>
+        <Pressable onPress={() => handleControlClick('KEY')}>
+          <View style={[styles.controlGroup, selectedControl === 'key' && styles.selectedControl]}>
+            <View style={styles.display}>
+              <Text style={styles.displayLabel}>KEY</Text>
+              <Text style={styles.displayValue}>{selectedKey}</Text>
+            </View>
           </View>
-          <View style={styles.buttonGroup}>
-            <Pressable 
-              style={styles.button} 
-              onPress={() => handleKeyChange('prev')}
-            >
-              <Text style={styles.buttonText}>-</Text>
-            </Pressable>
-            <Pressable 
-              style={styles.button}
-              onPress={() => handleKeyChange('next')}
-            >
-              <Text style={styles.buttonText}>+</Text>
-            </Pressable>
-          </View>
-        </View>
+        </Pressable>
         
         {/* Chord type selector */}
-        <View style={styles.controlGroup}>
-          <View style={styles.display}>
-            <Text style={styles.displayLabel}>CHORD TYPE</Text>
-            <Text style={styles.displayValue}>{chordTypeNames[chordTypeIndex]}</Text>
+        <Pressable onPress={() => handleControlClick('CHORD TYPE')}>
+          <View style={[styles.controlGroup, selectedControl === 'chord type' && styles.selectedControl]}>
+            <View style={styles.display}>
+              <Text style={styles.displayLabel}>CHORD TYPE</Text>
+              <Text style={styles.displayValue}>{chordTypeNames[chordTypeIndex]}</Text>
+            </View>
           </View>
-          <View style={styles.buttonGroup}>
-            <Pressable 
-              style={styles.button}
-              onPress={() => handleChordTypeChange('prev')}
-            >
-              <Text style={styles.buttonText}>-</Text>
-            </Pressable>
-            <Pressable 
-              style={styles.button}
-              onPress={() => handleChordTypeChange('next')}
-            >
-              <Text style={styles.buttonText}>+</Text>
-            </Pressable>
-          </View>
-        </View>
-        
-        {/* Play button */}
-        <View style={styles.playContainer}>
-          <Pressable 
-            style={[styles.playButton, isPlaying && styles.playButtonActive]} 
-            onPressIn={handlePlay}
-            onPressOut={handlePlayRelease}
-          >
-            <Play size={48} color={colors.text} />
-          </Pressable>
-        </View>
+        </Pressable>
         
         {/* Bass note selector */}
-        <View style={styles.controlGroup}>
-          <View style={styles.display}>
-            <Text style={styles.displayLabel}>BASS</Text>
-            <Text style={styles.displayValue}>{bassNote}</Text>
+        <Pressable onPress={() => handleControlClick('BASS')}>
+          <View style={[styles.controlGroup, selectedControl === 'bass' && styles.selectedControl]}>
+            <View style={styles.display}>
+              <Text style={styles.displayLabel}>BASS</Text>
+              <Text style={styles.displayValue}>{bassNote}</Text>
+            </View>
           </View>
-          <View style={styles.buttonGroup}>
-            <Pressable 
-              style={styles.button}
-              onPress={() => handleBassNoteChange('prev')}
-            >
-              <Text style={styles.buttonText}>-</Text>
-            </Pressable>
-            <Pressable 
-              style={styles.button}
-              onPress={() => handleBassNoteChange('next')}
-            >
-              <Text style={styles.buttonText}>+</Text>
-            </Pressable>
-          </View>
-        </View>
+        </Pressable>
       </View>
-      
+
+      {/* Plus/Minus buttons at right */}
+      <View style={styles.plusMinusContainer}>
+        <Pressable 
+          style={styles.plusMinusButton}
+          onPress={() => handleAdjustValue('up')}
+        >
+          <Text style={styles.plusMinusText}>+</Text>
+        </Pressable>
+        
+        <Pressable 
+          style={styles.minusButton}
+          onPressIn={handleMinusButtonPressIn}
+          onPressOut={handleMinusButtonPressOut}
+        >
+          <Text style={styles.plusMinusText}>-</Text>
+        </Pressable>
+      </View>
+
       {/* Save buttons */}
       <View style={styles.saveButtonsContainer}>
-        <Pressable style={styles.saveButton} onPress={handleSaveToU}>
-          <Text style={styles.saveButtonText}>SAVE TYPE TO "U" CHORD</Text>
+        <Pressable style={styles.saveButton} onPress={() => handleInitiateSave('u')}>
+          <View>
+            <Text style={styles.saveButtonText}>SAVE TYPE TO</Text>
+            <Text style={[styles.saveButtonText, { marginTop: 4 }]}>"U" CHORD</Text>
+          </View>
         </Pressable>
-        <Pressable style={styles.saveButton} onPress={handleSaveToSlot}>
-          <Text style={styles.saveButtonText}>SAVE TO NEXT EMPTY SLOT</Text>
+        <Pressable style={styles.saveButton} onPress={() => handleInitiateSave('slot')}>
+          <View>
+            <Text style={styles.saveButtonText}>SAVE TO NEXT</Text>
+            <Text style={[styles.saveButtonText, { marginTop: 4 }]}>EMPTY</Text>
+          </View>
         </Pressable>
       </View>
+
+      {/* Save Confirmation Modal */}
+      <Modal
+        visible={showSaveConfirm}
+        transparent={true}
+        animationType="fade"
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Save Chord</Text>
+            <Text style={styles.modalText}>{saveMessage}</Text>
+            <View style={styles.modalButtons}>
+              <Pressable
+                style={[styles.modalButton, styles.modalButtonNo]}
+                onPress={() => handleConfirmSave(false)}
+              >
+                <Text style={styles.modalButtonText}>NO</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalButton, styles.modalButtonYes]}
+                onPress={() => handleConfirmSave(true)}
+              >
+                <Text style={styles.modalButtonText}>YES</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -291,60 +409,55 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 16,
+    marginTop: 15,
   },
-  editorGrid: {
+  topControls: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 16,
-    marginBottom: 24,
+    justifyContent: 'center',
+    gap: 5,
+    width: '100%',
+    paddingHorizontal: 20,
   },
   controlGroup: {
-    flex: 1,
-    minWidth: 150,
+    width: 150,
     backgroundColor: colors.buttonGrey,
     borderRadius: 12,
-    padding: 12,
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 98,
+    marginTop: -8,
+    marginHorizontal: 2,
   },
   display: {
-    marginBottom: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    paddingVertical: 8,
   },
   displayLabel: {
     color: colors.textSecondary,
-    fontSize: 12,
-    marginBottom: 4,
+    fontSize: 17.5,
+    marginBottom: 12,
+    width: '100%',
+    textAlign: 'center',
   },
   displayValue: {
     color: colors.text,
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  buttonGroup: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  button: {
-    flex: 1,
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    padding: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonText: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 30,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   playContainer: {
-    flex: 1,
-    minWidth: 150,
-    alignItems: 'center',
-    justifyContent: 'center',
+    position: 'absolute',
+    left: 70,
+    top: -90,
+    zIndex: 1,
   },
   playButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
     backgroundColor: colors.buttonGrey,
     alignItems: 'center',
     justifyContent: 'center',
@@ -353,18 +466,116 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   saveButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     gap: 16,
+    marginTop: 154,
+    alignItems: 'center',
   },
   saveButton: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.chord.m11,
     borderRadius: 12,
-    padding: 16,
+    padding: 24,
+    height: 74,
+    width: '38%',
     alignItems: 'center',
     justifyContent: 'center',
   },
   saveButtonText: {
     color: colors.text,
-    fontSize: 16,
+    fontSize: 18.4,
     fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  plusMinusContainer: {
+    position: 'absolute',
+    right: -91,
+    top: 50,
+    bottom: -50,
+    width: 91,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderLeftWidth: 1,
+    borderLeftColor: colors.border,
+    backgroundColor: colors.buttonGrey,
+    borderRadius: 8,
+  },
+  plusMinusButton: {
+    width: 91,
+    height: 218,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.chord.m11,
+    borderRadius: 8,
+  },
+  minusButton: {
+    width: 91,
+    height: 218,
+    borderRadius: 4,
+    backgroundColor: colors.buttonGrey,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  plusMinusText: {
+    color: colors.textOffWhite,
+    fontSize: 44,
+    fontWeight: 'bold',
+  },
+  selectedControl: {
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    padding: 20,
+    width: '80%',
+    maxWidth: 300,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modalTitle: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  modalText: {
+    color: colors.text,
+    fontSize: 16,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  modalButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 30,
+    borderRadius: 8,
+    minWidth: 100,
+    alignItems: 'center',
+  },
+  modalButtonNo: {
+    backgroundColor: colors.buttonGrey,
+    marginRight: 10,
+  },
+  modalButtonYes: {
+    backgroundColor: colors.primary,
+    marginLeft: 10,
+  },
+  modalButtonText: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

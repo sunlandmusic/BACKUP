@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Modal, View, Text, StyleSheet, Platform, Pressable, TextInput, ScrollView } from 'react-native';
+import { Modal, View, Text, StyleSheet, Platform, Pressable, TextInput, ScrollView, Alert, StyleProp, ViewStyle } from 'react-native';
 import { colors } from '@/constants/colors';
 import { useChordStore } from '@/stores/chord-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -125,6 +125,35 @@ const SessionPopup: React.FC<SessionPopupProps> = ({
     }
   };
 
+  const handleFreshSession = () => {
+    Alert.alert(
+      "Fresh Session",
+      "This will clear all the settings and return everything to default state. Are you starting a new FRESH SESSION?",
+      [
+        {
+          text: "NO",
+          style: "cancel"
+        },
+        {
+          text: "YES",
+          onPress: () => {
+            // Reset all store values to default
+            chordStore.setCurrentChord(null);
+            chordStore.setCurrentProgression(null);
+            chordStore.setCurrentKey('C');
+            chordStore.setCurrentMode('major');
+            chordStore.setCurrentInstrument('piano');
+            chordStore.setCurrentFlamValue('OFF' as FlamValue);
+            chordStore.setSavedChords([]);
+            chordStore.setUserChordType(null);
+            chordStore.setUserChordBassOffset(0);
+            onClose();
+          }
+        }
+      ]
+    );
+  };
+
   if (!visible) return null;
 
   return (
@@ -152,17 +181,25 @@ const SessionPopup: React.FC<SessionPopupProps> = ({
           <View style={styles.content}>
             {mode === 'initial' && (
               <View style={styles.buttonContainer}>
+                <View style={styles.buttonRow}>
+                  <Pressable 
+                    style={styles.button}
+                    onPress={() => setMode('save')}
+                  >
+                    <Text style={[styles.buttonText, { backgroundColor: '#8B0000' }]}>SAVE SESSION</Text>
+                  </Pressable>
+                  <Pressable 
+                    style={styles.button}
+                    onPress={() => setMode('load')}
+                  >
+                    <Text style={[styles.buttonText, { backgroundColor: '#006400' }]}>LOAD SESSION</Text>
+                  </Pressable>
+                </View>
                 <Pressable 
                   style={styles.button}
-                  onPress={() => setMode('save')}
+                  onPress={handleFreshSession}
                 >
-                  <Text style={styles.buttonText}>SAVE SESSION</Text>
-                </Pressable>
-                <Pressable 
-                  style={styles.button}
-                  onPress={() => setMode('load')}
-                >
-                  <Text style={styles.buttonText}>LOAD SESSION</Text>
+                  <Text style={[styles.buttonText, { backgroundColor: '#000000' }]}>FRESH SESSION</Text>
                 </Pressable>
               </View>
             )}
@@ -238,6 +275,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 16,
   },
   outsideModal: {
     position: 'absolute',
@@ -249,30 +287,30 @@ const styles = StyleSheet.create({
   modalContent: {
     backgroundColor: colors.background,
     borderRadius: 16,
-    width: Platform.OS === 'web' ? '80%' : '90%',
+    width: '100%',
     maxWidth: 500,
-    padding: 20,
+    padding: Platform.OS === 'ios' ? 20 : 16,
     position: 'relative',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: Platform.OS === 'ios' ? 20 : 16,
     position: 'relative',
   },
   headerTitle: {
     color: colors.text,
-    fontSize: 18,
+    fontSize: Platform.OS === 'ios' ? 18 : 16,
     fontWeight: 'bold',
   },
   closeButton: {
     position: 'absolute',
     right: 0,
     top: 0,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: Platform.OS === 'ios' ? 32 : 28,
+    height: Platform.OS === 'ios' ? 32 : 28,
+    borderRadius: Platform.OS === 'ios' ? 16 : 14,
     backgroundColor: colors.buttonGrey,
     justifyContent: 'center',
     alignItems: 'center',
@@ -286,21 +324,31 @@ const styles = StyleSheet.create({
     minHeight: 200,
   },
   buttonContainer: {
-    gap: 16,
+    gap: Platform.OS === 'ios' ? 16 : 12,
+    width: '100%',
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: Platform.OS === 'ios' ? 16 : 12,
+    width: '100%',
   },
   button: {
-    backgroundColor: colors.buttonGrey,
-    padding: 16,
-    borderRadius: 8,
+    flex: 1,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-    marginVertical: 8,
+    marginVertical: Platform.OS === 'ios' ? 8 : 6,
   },
   buttonText: {
     color: colors.textOffWhite,
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: Platform.OS === 'ios' ? 18.4 : 16,
+    fontWeight: '500',
+    padding: Platform.OS === 'ios' ? 16 : 12,
+    borderRadius: 8,
+    overflow: 'hidden',
+    width: '100%',
+    textAlign: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   saveContainer: {
     gap: 16,

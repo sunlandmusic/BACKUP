@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Modal, View, Text, StyleSheet, Platform, Pressable, ScrollView } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Modal, View, Text, StyleSheet, Platform, Pressable, ScrollView, TouchableOpacity } from 'react-native';
 import { colors } from '@/constants/colors';
 import { InstrumentSelector } from '@/components/InstrumentSelector';
 import { SavedChordGrid } from '@/components/SavedChordGrid';
 import { useChordStore } from '@/stores/chord-store';
-import { Chord, InstrumentType } from '@/types/music';
+import { Chord, InstrumentType, FlamValue } from '@/types/music';
 import { playChord, stopChord } from '@/utils/audio-utils';
 import { ArrowLeftRight } from 'lucide-react-native';
 
@@ -22,13 +22,20 @@ const SoundsPopup: React.FC<SoundsPopupProps> = ({
     currentInstrument, 
     setCurrentInstrument,
     setCurrentChord,
+    currentFlamValue,
+    setCurrentFlamValue,
   } = useChordStore();
-  
-  // Filter out null chords
-  const filteredChords = savedChords.filter((chord): chord is NonNullable<typeof chord> => chord !== null);
   
   const [isSecondPage, setIsSecondPage] = useState(false);
   const [activeChordIndex, setActiveChordIndex] = useState<number | null>(null);
+  
+  // Filter out null chords
+  const filteredChords = React.useMemo(() => 
+    savedChords.filter((chord): chord is NonNullable<typeof chord> => chord !== null),
+    [savedChords]
+  );
+  
+  console.log('Filtered chords length:', filteredChords.length);
   
   // Reset page when modal opens
   useEffect(() => {
@@ -41,34 +48,36 @@ const SoundsPopup: React.FC<SoundsPopupProps> = ({
   // Cleanup effect
   useEffect(() => {
     return () => {
-      stopChord();
+      if (activeChordIndex !== null) {
+        stopChord();
+      }
     };
-  }, []);
+  }, [activeChordIndex]);
   
   // Handle instrument change
-  const handleInstrumentChange = (instrument: InstrumentType) => {
+  const handleInstrumentChange = useCallback((instrument: InstrumentType) => {
     setCurrentInstrument(instrument);
-  };
+  }, [setCurrentInstrument]);
+  
+  // Handle flam change
+  const handleFlamChange = useCallback((value: string) => {
+    setCurrentFlamValue(value as FlamValue);
+  }, [setCurrentFlamValue]);
   
   // Handle saved chord press
-  const handleSavedChordPress = (chord: Chord, index: number) => {
+  const handleSavedChordPress = useCallback((chord: Chord, index: number) => {
     setActiveChordIndex(index);
     setCurrentChord(chord);
-    playChord(chord.notes);
-  };
+    setTimeout(() => {
+      playChord(chord.notes);
+    }, 50);
+  }, [setCurrentChord]);
   
   // Handle saved chord release
-  const handleSavedChordRelease = () => {
+  const handleSavedChordRelease = useCallback(() => {
     stopChord();
     setActiveChordIndex(null);
-  };
-
-  // Toggle between pages
-  const togglePage = () => {
-    setIsSecondPage(!isSecondPage);
-  };
-
-  if (!visible) return null;
+  }, []);
 
   // Get current page of chords
   const currentPageChords = isSecondPage 
@@ -91,59 +100,53 @@ const SoundsPopup: React.FC<SoundsPopupProps> = ({
             <Pressable 
               style={styles.closeButton} 
               onPress={onClose}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              hitSlop={{ top: 10, bottom: 10, left: 0, right: 0 }}
             >
               <Text style={styles.closeButtonText}>×</Text>
             </Pressable>
           </View>
           
-          <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-            <View style={styles.mainLayout}>
-              {/* Left side - Instrument selector */}
-              <View style={styles.leftPanel}>
-                <InstrumentSelector
-                  currentInstrument={currentInstrument}
-                  onInstrumentChange={handleInstrumentChange}
-                />
-              </View>
-              
-              {/* Right side - Saved chord grid */}
-              <View style={styles.rightPanel}>
-                <SavedChordGrid
-                  chords={currentPageChords}
-                  onChordPress={handleSavedChordPress}
-                  onChordRelease={handleSavedChordRelease}
-                  currentPage={0}
-                  totalPages={1}
-                  onPageChange={() => {}}
-                  columns={4}
-                  rows={4}
-                  activeChordIndex={activeChordIndex}
-                  saveMode={false}
-                />
+          <View style={styles.content}>
+            <View style={styles.gridContainer}>
+              <View style={styles.mainLayout}>
+                {/* Left side - Instrument selector */}
+                <View style={styles.leftPanel}>
+                  <InstrumentSelector
+                    currentInstrument={currentInstrument}
+                    onInstrumentChange={handleInstrumentChange}
+                    flamValue={currentFlamValue}
+                    onFlamChange={handleFlamChange}
+                  />
+                </View>
                 
-                {/* Page toggle button */}
-                {filteredChords.length > 16 && (
-                  <View style={styles.paginationContainer}>
-                    <Pressable 
-                      onPress={togglePage}
-                      style={[
-                        styles.toggleButton,
-                        isSecondPage && styles.toggleButtonActive
-                      ]}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <ArrowLeftRight 
-                        size={24} 
-                        color={colors.textOffWhite}
-                        style={styles.toggleIcon}
-                      />
-                    </Pressable>
-                  </View>
-                )}
+                {/* Right side - Saved chord grid */}
+                <View style={styles.rightPanel}>
+                  <SavedChordGrid
+                    chords={currentPageChords}
+                    onChordPress={handleSavedChordPress}
+                    onChordRelease={handleSavedChordRelease}
+                    currentPage={0}
+                    totalPages={1}
+                    onPageChange={() => {}}
+                    columns={4}
+                    rows={4}
+                    activeChordIndex={activeChordIndex}
+                    saveMode={false}
+                  />
+                </View>
               </View>
             </View>
-          </ScrollView>
+
+            {/* Toggle button with absolute positioning */}
+            <View style={styles.toggleContainer}>
+              <TouchableOpacity 
+                style={[styles.toggleButton, isSecondPage && styles.toggleButtonActive]}
+                onPress={() => setIsSecondPage(!isSecondPage)}
+              >
+                <ArrowLeftRight size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       </View>
     </Modal>
@@ -153,7 +156,7 @@ const SoundsPopup: React.FC<SoundsPopupProps> = ({
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'black',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -165,29 +168,31 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   modalContent: {
-    backgroundColor: colors.background,
+    backgroundColor: 'black',
     borderRadius: 16,
     width: Platform.OS === 'web' ? '80%' : '90%',
     maxWidth: 1000,
-    maxHeight: Platform.OS === 'web' ? '80%' : '90%',
     padding: 20,
     position: 'relative',
+    top: 100,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 20,
+    marginTop: 0,
     position: 'relative',
   },
   headerTitle: {
     color: colors.text,
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 20.7,
+    fontWeight: '600',
+    marginLeft: -20,
   },
   closeButton: {
     position: 'absolute',
-    right: 0,
+    left: 0,
     top: 0,
     width: 32,
     height: 32,
@@ -202,43 +207,48 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   content: {
-    flex: 1,
+    height: 500,
+    position: 'relative',
   },
-  contentContainer: {
-    flexGrow: 1,
+  gridContainer: {
+    height: 400,
+    position: 'relative',
   },
   mainLayout: {
-    flexDirection: Platform.OS === 'web' ? 'row' : 'column',
-    gap: 16,
+    flexDirection: 'row',
+    height: '100%',
   },
   leftPanel: {
-    flex: Platform.OS === 'web' ? 0.4 : undefined,
-    marginBottom: Platform.OS === 'web' ? 0 : 16,
+    flex: 1,
+    marginRight: 20,
   },
   rightPanel: {
-    flex: Platform.OS === 'web' ? 0.6 : undefined,
+    flex: 2,
   },
-  paginationContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 16,
-    paddingBottom: Platform.OS === 'web' ? 0 : 20,
+  toggleContainer: {
+    position: 'absolute',
+    width: '100%',
+    top: 250,
+    alignItems: 'center',
+    paddingLeft: 421,
   },
   toggleButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
     backgroundColor: colors.buttonGrey,
-    justifyContent: 'center',
+    flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
+    justifyContent: 'center',
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   toggleButtonActive: {
     backgroundColor: colors.primary,
+    borderColor: colors.text,
   },
-  toggleIcon: {
-    opacity: 0.9,
+  toggleText: {
+    display: 'none',
   },
 });
 

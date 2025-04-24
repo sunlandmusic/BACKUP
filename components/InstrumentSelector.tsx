@@ -1,30 +1,44 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { colors } from '@/constants/colors';
-import { InstrumentType } from '@/types/music';
+import { InstrumentType, FlamValue } from '@/types/music';
 import { Music } from 'lucide-react-native';
 
 interface InstrumentSelectorProps {
   currentInstrument: InstrumentType;
   onInstrumentChange: (instrument: InstrumentType) => void;
+  flamValue: string;
+  onFlamChange: (value: string) => void;
 }
 
 export const InstrumentSelector: React.FC<InstrumentSelectorProps> = ({
   currentInstrument,
-  onInstrumentChange
+  onInstrumentChange,
+  flamValue,
+  onFlamChange
 }) => {
   // Define available instruments
   const instruments: { type: InstrumentType; label: string }[] = [
     { type: 'balafon', label: 'BALAFON' },
-    { type: 'piano', label: 'PIANO' },
+    { type: 'sine', label: 'SINE' },
     { type: 'rhodes', label: 'RHODES' },
-    { type: 'pluck', label: 'PLUCK' },
-    { type: 'pad', label: 'PAD' },
+    { type: 'piano', label: 'PIANO' },
     { type: 'steel_drum', label: 'STEEL DRUM' },
+    { type: 'synth', label: 'SYNTH' },
+    { type: 'pad', label: 'PAD' },
+    { type: 'guitar', label: 'GUITAR' },
   ];
 
+  const flamOptions = ['OFF', '1/192', '1/96', '1/64', '1/48', '1/32', '1/24', '1/16'];
+
+  const handleFlamCycle = () => {
+    const currentIndex = flamOptions.indexOf(flamValue.toUpperCase());
+    const nextIndex = (currentIndex + 1) % flamOptions.length;
+    onFlamChange(flamOptions[nextIndex]);
+  };
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { marginTop: 5 }]}>
       <View style={styles.section}>
         <View style={styles.instrumentGrid}>
           {instruments.map((instrument) => (
@@ -46,16 +60,31 @@ export const InstrumentSelector: React.FC<InstrumentSelectorProps> = ({
           ))}
         </View>
       </View>
+      
+      <View style={styles.flamSection}>
+        <View style={styles.flamLabelContainer}>
+          <Text style={styles.flamLabelText}>FLAM</Text>
+        </View>
+        <Pressable 
+          style={[
+            styles.flamValueWindow,
+            flamValue !== 'OFF' && styles.flamValueWindowActive
+          ]}
+          onPress={handleFlamCycle}
+        >
+          <Text style={styles.flamValueText}>{flamValue.toUpperCase()}</Text>
+        </Pressable>
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
     padding: 16,
     marginVertical: 8,
+    marginLeft: -60,
+    width: 400,
   },
   section: {
     marginBottom: 24,
@@ -63,26 +92,67 @@ const styles = StyleSheet.create({
   instrumentGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
+    width: '100%',
+    gap: 8,
   },
   instrumentButton: {
-    backgroundColor: colors.surfaceLight,
+    backgroundColor: '#333333',
     borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginBottom: 8,
-    width: '48%',
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    width: 147,
+    marginBottom: 0,
     alignItems: 'center',
+    justifyContent: 'center',
+    height: 45,
   },
   selectedInstrumentButton: {
     backgroundColor: colors.primary,
   },
   instrumentButtonText: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: 'bold',
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '500',
+    textAlign: 'center',
   },
   selectedInstrumentButtonText: {
-    color: colors.textOffWhite,
-  }
+    color: '#FFFFFF',
+  },
+  flamSection: {
+    position: 'absolute',
+    left: 359,
+    top: 50,
+    alignItems: 'center',
+  },
+  flamLabelContainer: {
+    marginBottom: 12,
+    marginLeft: -2,
+  },
+  flamLabelText: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '700',
+    textAlign: 'left',
+  },
+  flamValueWindow: {
+    width: 75,
+    height: 75,
+    backgroundColor: '#333333',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  flamValueWindowActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.text,
+  },
+  flamValueText: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
 });

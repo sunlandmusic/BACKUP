@@ -48,6 +48,7 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@expo/ngrok": "^4.1.0",
+    "@react-native-community/cli": "^18.0.0",
     "@types/react": "~18.3.12",
     "babel-plugin-module-resolver": "^5.0.2",
     "expo-cli": "^6.3.12",

@@ -3,22 +3,26 @@ import { StyleSheet, Text, View, Pressable, ViewStyle, TextStyle, Dimensions } f
 import { colors } from '@/constants/colors';
 import { Sliders } from 'lucide-react-native';
 import SoundsPopup from './SoundsPopup';
+import UserChordPopup from './UserChordPopup';
+import SessionPopup from './SessionPopup';
 
 interface UtilButtonProps {
   onSoundsPress: () => void;
   onUChordPress: () => void;
   onScanPress: () => void;
-  onSavePress: () => void;
+  onSessionPress: () => void;
 }
 
 export const UtilButton: React.FC<UtilButtonProps> = ({
   onSoundsPress,
   onUChordPress,
   onScanPress,
-  onSavePress,
+  onSessionPress,
 }) => {
   const [isPopupVisible, setIsPopupVisible] = useState(false);
   const [isSoundsPopupVisible, setIsSoundsPopupVisible] = useState(false);
+  const [isUserChordPopupVisible, setIsUserChordPopupVisible] = useState(false);
+  const [isSessionPopupVisible, setIsSessionPopupVisible] = useState(false);
   const screenWidth = Dimensions.get('window').width;
   const screenHeight = Dimensions.get('window').height;
 
@@ -29,6 +33,10 @@ export const UtilButton: React.FC<UtilButtonProps> = ({
   const handleOptionPress = (handler: () => void) => {
     if (handler === onSoundsPress) {
       setIsSoundsPopupVisible(true);
+    } else if (handler === onUChordPress) {
+      setIsUserChordPopupVisible(true);
+    } else if (handler === onSessionPress) {
+      setIsSessionPopupVisible(true);
     } else {
       handler();
     }
@@ -68,9 +76,9 @@ export const UtilButton: React.FC<UtilButtonProps> = ({
               </Pressable>
               <Pressable 
                 style={styles.popupButton} 
-                onPress={() => handleOptionPress(onSavePress)}
+                onPress={() => handleOptionPress(onSessionPress)}
               >
-                <Text style={styles.popupButtonText}>SAVE</Text>
+                <Text style={styles.popupButtonText}>SESSION</Text>
               </Pressable>
             </View>
           </Pressable>
@@ -81,6 +89,16 @@ export const UtilButton: React.FC<UtilButtonProps> = ({
         visible={isSoundsPopupVisible}
         onClose={() => setIsSoundsPopupVisible(false)}
       />
+
+      <UserChordPopup
+        visible={isUserChordPopupVisible}
+        onClose={() => setIsUserChordPopupVisible(false)}
+      />
+
+      <SessionPopup
+        visible={isSessionPopupVisible}
+        onClose={() => setIsSessionPopupVisible(false)}
+      />
     </View>
   );
 };
@@ -88,6 +106,7 @@ export const UtilButton: React.FC<UtilButtonProps> = ({
 const styles = StyleSheet.create({
   container: {
     position: 'relative',
+    marginLeft: 40,
   },
   utilButton: {
     width: 43.2,
@@ -122,7 +141,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     minWidth: 150,
     transform: [
-      { translateX: 20 },   // Move right by 20 (70 - 50)
+      { translateX: -40 },   // Move left by 40 instead of 20
       { translateY: 20 },   // Keep vertical position the same
     ],
   },

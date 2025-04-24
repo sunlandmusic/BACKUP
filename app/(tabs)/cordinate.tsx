@@ -1627,15 +1627,15 @@ const styles = StyleSheet.create({
     ]
   },
   gridContainer: {
+    transform: [
+      { translateY: 8 },
+      { translateX: -117 }
+    ],
     width: '100%',
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 10,
-    transform: [
-      { translateY: 8 },
-      { translateX: 43 }
-    ],
     backgroundColor: 'transparent'
   },
   gridHeaderContainer: {

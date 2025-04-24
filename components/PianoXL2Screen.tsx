@@ -5,6 +5,10 @@ import { colors } from '@/constants/colors';
 import { NoteName, MusicMode, Chord } from '@/types/music';
 import { getScaleNotes, getDiatonicChords } from '@/utils/chord-utils';
 import { useChordStore } from '@/stores/chord-store';
+import { Eye } from 'lucide-react-native';
+import { SettingsPanelIndex } from '@/components/SettingsPanelIndex';
+import { HorizontalPiano } from '@/components/HorizontalPiano';
+import { PlusMinusButtons } from '@/components/PlusMinusButtons';
 
 interface RootNotePianoProps {
   onNoteSelect?: (note: string) => void;
@@ -183,8 +187,8 @@ const styles = StyleSheet.create({
     height: 100,
     borderRadius: 15,
     backgroundColor: '#000000',
-    borderWidth: 1,
-    borderColor: '#444444',
+    borderWidth: 0,
+    borderColor: colors.primary,
     paddingBottom: 5,
     margin: 0,
     position: 'absolute',

@@ -77,8 +77,8 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({
     sounds: '/(tabs)/sounds',
     prog: '/(tabs)/progressions',
     user: '/(tabs)/user-chord',
-    pianoXL: '/(tabs)/16keys',
-    cordinate: '/(tabs)/cordinate'
+    cordinate: '/(tabs)/cordinate',
+    pianoxl: '/(tabs)/pianoxl'
   } as const;
 
   // Navigation items
@@ -89,29 +89,14 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({
       route: routes.chord
     },
     { 
-      label: 'SOUNDS', 
-      icon: <HeadphoneIcon />,
-      route: routes.sounds
-    },
-    { 
-      label: 'PROG', 
-      icon: <ProgressionIcon />,
-      route: routes.prog
-    },
-    { 
-      label: 'USER', 
-      icon: <UserIcon />,
-      route: routes.user
-    },
-    { 
-      label: 'PIANO XL', 
-      icon: <PianoIcon />,
-      route: routes.pianoXL
-    },
-    { 
       label: 'CORDINATE', 
       icon: <GridIcon />,
       route: routes.cordinate
+    },
+    {
+      label: 'PIANO XL',
+      icon: <PianoIcon />,
+      route: routes.pianoxl
     }
   ];
   
