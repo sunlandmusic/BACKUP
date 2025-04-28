@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, SafeAreaView, Modal } from 'react-native';
 import { Eye, Save } from 'lucide-react-native';
 import { colors } from '@/constants/colors';
-import { NoteName, MusicMode, Chord, ChordType } from '@/types/music';
+import { NoteName, MusicMode, Chord, ChordType, InstrumentType } from '@/types/music';
 import { getScaleNotes, getDiatonicChords, createChord } from '@/utils/chord-utils';
 import { useChordStore } from '@/stores/chord-store';
 import { playChord, stopChord } from '@/utils/audio-utils';
@@ -37,6 +37,19 @@ const MINOR_SCALE_CHORDS: { [key: string]: ChordType[] } = {
   '7': ['major', '7', '9'],
 };
 
+const availableSounds: InstrumentType[] = ['balafon', 'piano', 'rhodes', 'steel_drum', 'pluck', 'pad'];
+const formatInstrumentName = (name: InstrumentType): string => {
+  switch (name) {
+    case 'balafon': return 'Balafon';
+    case 'piano': return 'Piano';
+    case 'rhodes': return 'Rhodes';
+    case 'steel_drum': return 'Steel Drum';
+    case 'pluck': return 'Pluck';
+    case 'pad': return 'Pad';
+    default: return name;
+  }
+};
+
 export function PianoXL({ onNoteSelect }: PianoXLProps) {
   // State
   const [selectedKey, setSelectedKey] = useState<NoteName>('A#');
@@ -53,6 +66,8 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
   const [nextEmptyIndex, setNextEmptyIndex] = useState<number | null>(null);
   const { setCurrentChord: setStoreChord, savedChords, saveChord } = useChordStore();
+  const [selectedSound, setSelectedSound] = useState<InstrumentType>('balafon');
+  const [isSoundWindowSelected, setIsSoundWindowSelected] = useState(false);
   
   // Update scale notes when key or mode changes
   useEffect(() => {
@@ -388,11 +403,27 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
     console.log('Current saved chords:', savedChords);
   }, [savedChords]);
 
+  const handleSoundSelect = () => {
+    setIsSoundWindowSelected(true);
+    // Cycle through available sounds
+    const currentIndex = availableSounds.indexOf(selectedSound);
+    const newIndex = (currentIndex + 1) % availableSounds.length;
+    setSelectedSound(availableSounds[newIndex]);
+  };
+
   return (
     <View style={styles.container}>
       {/* Eye button */}
       <Pressable style={styles.eyeButton} onPress={toggleMenu}>
         <Eye size={28} color={colors.text} />
+      </Pressable>
+
+      {/* Instrument (Sound) selection window */}
+      <Pressable 
+        style={[styles.soundWindow, isSoundWindowSelected && styles.soundWindowSelected]}
+        onPress={handleSoundSelect}
+      >
+        <Text style={styles.soundText}>{formatInstrumentName(selectedSound)}</Text>
       </Pressable>
 
       {/* Save to Next Empty button */}
@@ -403,7 +434,7 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
           handleSavePress();
         }}
       >
-        <Text style={styles.saveButtonText}>SAVE TO NEXT EMPTY</Text>
+        <Text style={styles.saveButtonText}>SAVE CHORD</Text>
       </Pressable>
 
       {/* Save Confirmation Modal */}
@@ -783,5 +814,27 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 16,
     fontWeight: '600',
+  },
+  soundWindow: {
+    position: 'absolute',
+    top: 30,
+    left: 125,
+    width: 119,
+    height: 50,
+    borderRadius: 15,
+    backgroundColor: '#000000',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+    borderWidth: 1,
+    borderColor: '#4A4A4A',
+  },
+  soundWindowSelected: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  soundText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '500',
   },
 }); 

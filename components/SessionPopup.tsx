@@ -4,7 +4,7 @@ import { colors } from '@/constants/colors';
 import { useChordStore } from '@/stores/chord-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Plus, Minus } from 'lucide-react-native';
-import { Chord, ChordProgression, NoteName, MusicMode, InstrumentType, FlamValue } from '@/types/music';
+import { Chord, ChordProgression, NoteName, MusicMode, InstrumentType, FlamValue, ChordType } from '@/types/music';
 
 interface Session {
   id: string;
@@ -19,7 +19,7 @@ interface Session {
     currentFlamValue: FlamValue;
     savedChords: (Chord | null)[];
     savedProgressions: ChordProgression[];
-    userChordType: number;
+    userChordType: ChordType | null;
     userChordBassOffset: number;
   }
 }
@@ -93,23 +93,31 @@ const SessionPopup: React.FC<SessionPopupProps> = ({
   };
   
   // Load a selected session
-  const loadSelectedSession = () => {
-    const session = sessions[selectedSessionIndex];
-    if (!session) return;
-    
-    // Load all state from the session
-    chordStore.setCurrentChord(session.data.currentChord);
-    chordStore.setCurrentProgression(session.data.currentProgression);
-    chordStore.setCurrentKey(session.data.currentKey);
-    chordStore.setCurrentMode(session.data.currentMode);
-    chordStore.setCurrentInstrument(session.data.currentInstrument);
-    chordStore.setCurrentFlamValue(session.data.currentFlamValue);
-    chordStore.setSavedChords(session.data.savedChords);
-    chordStore.setUserChordType(session.data.userChordType);
-    chordStore.setUserChordBassOffset(session.data.userChordBassOffset);
-    
-    setMode('initial');
-    onClose();
+  const loadSelectedSession = async () => {
+    try {
+      const session = sessions[selectedSessionIndex];
+      if (!session) return;
+      
+      // Load all state from the session
+      await chordStore.setCurrentChord(session.data.currentChord);
+      await chordStore.setCurrentProgression(session.data.currentProgression);
+      await chordStore.setCurrentKey(session.data.currentKey);
+      await chordStore.setCurrentMode(session.data.currentMode);
+      await chordStore.setCurrentInstrument(session.data.currentInstrument);
+      await chordStore.setCurrentFlamValue(session.data.currentFlamValue);
+      await chordStore.setSavedChords(session.data.savedChords);
+      await chordStore.setUserChordType(session.data.userChordType);
+      await chordStore.setUserChordBassOffset(session.data.userChordBassOffset);
+      
+      setMode('initial');
+      onClose();
+    } catch (e) {
+      console.error('Error loading session:', e);
+      Alert.alert(
+        "Error",
+        "Failed to load session. Please try again."
+      );
+    }
   };
   
   // Navigate through sessions
@@ -125,7 +133,7 @@ const SessionPopup: React.FC<SessionPopupProps> = ({
     }
   };
 
-  const handleFreshSession = () => {
+  const handleFreshSession = async () => {
     Alert.alert(
       "Fresh Session",
       "This will clear all the settings and return everything to default state. Are you starting a new FRESH SESSION?",
@@ -136,18 +144,26 @@ const SessionPopup: React.FC<SessionPopupProps> = ({
         },
         {
           text: "YES",
-          onPress: () => {
-            // Reset all store values to default
-            chordStore.setCurrentChord(null);
-            chordStore.setCurrentProgression(null);
-            chordStore.setCurrentKey('C');
-            chordStore.setCurrentMode('major');
-            chordStore.setCurrentInstrument('piano');
-            chordStore.setCurrentFlamValue('OFF' as FlamValue);
-            chordStore.setSavedChords([]);
-            chordStore.setUserChordType(null);
-            chordStore.setUserChordBassOffset(0);
-            onClose();
+          onPress: async () => {
+            try {
+              // Reset all store values to default
+              await chordStore.setCurrentChord(null);
+              await chordStore.setCurrentProgression(null);
+              await chordStore.setCurrentKey('C');
+              await chordStore.setCurrentMode('major');
+              await chordStore.setCurrentInstrument('piano');
+              await chordStore.setCurrentFlamValue('off');
+              await chordStore.setSavedChords([]);
+              await chordStore.setUserChordType(null);
+              await chordStore.setUserChordBassOffset(0);
+              onClose();
+            } catch (e) {
+              console.error('Error resetting session:', e);
+              Alert.alert(
+                "Error",
+                "Failed to reset session. Please try again."
+              );
+            }
           }
         }
       ]

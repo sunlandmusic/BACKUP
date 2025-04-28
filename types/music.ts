@@ -76,7 +76,7 @@ export type InstrumentType =
   | 'steel_drum';
 
 // Flam values (for chord arpeggiation)
-export type FlamValue = 'off' | '1/32' | '1/16' | '1/8';
+export type FlamValue = 'off' | '1/48' | '1/32' | '1/24' | '1/16';
 
 // Time signature
 export type TimeSignature = [number, number]; // [beats per measure, beat unit]

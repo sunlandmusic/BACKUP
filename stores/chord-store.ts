@@ -143,14 +143,26 @@ export const useChordStore = create<ChordState>()(
       setCurrentMode: (mode) => set({ currentMode: mode }),
       
       // Actions - Sound settings
-      setCurrentInstrument: (instrument) => {
-        setInstrument(instrument);
-        set({ currentInstrument: instrument });
+      setCurrentInstrument: async (instrument) => {
+        try {
+          await setInstrument(instrument);
+          set({ currentInstrument: instrument });
+        } catch (e) {
+          console.error('Error setting instrument:', e);
+          // Fall back to piano if there's an error
+          set({ currentInstrument: 'piano' });
+        }
       },
       
-      setCurrentFlamValue: (flamValue) => {
-        setFlamValue(flamValue);
-        set({ currentFlamValue: flamValue });
+      setCurrentFlamValue: async (flamValue) => {
+        try {
+          await setFlamValue(flamValue);
+          set({ currentFlamValue: flamValue });
+        } catch (e) {
+          console.error('Error setting flam value:', e);
+          // Fall back to off if there's an error
+          set({ currentFlamValue: 'off' });
+        }
       },
       
       setIsPlaying: (isPlaying) => set({ isPlaying }),

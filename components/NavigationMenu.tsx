@@ -78,7 +78,8 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({
     prog: '/(tabs)/progressions',
     user: '/(tabs)/user-chord',
     cordinate: '/(tabs)/cordinate',
-    pianoxl: '/(tabs)/pianoxl'
+    pianoxl: '/(tabs)/pianoxl',
+    mix: '/(tabs)/mix'
   } as const;
 
   // Navigation items
@@ -97,6 +98,11 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({
       label: 'PIANO XL',
       icon: <PianoIcon />,
       route: routes.pianoxl
+    },
+    {
+      label: 'MIX',
+      icon: <HeadphoneIcon />,
+      route: routes.mix
     }
   ];
   

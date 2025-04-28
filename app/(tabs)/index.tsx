@@ -3,8 +3,8 @@ import { StyleSheet, Text, View, SafeAreaView, Pressable, Platform, Modal } from
 import { StatusBar } from "expo-status-bar";
 import { colors } from "@/constants/colors";
 import { useChordStore } from "@/stores/chord-store";
-import { Chord, ChordType, NoteName, MusicMode } from "@/types/music";
-import { playChord, stopChord, initAudio } from "@/utils/audio-utils";
+import { Chord, ChordType, NoteName, MusicMode, InstrumentType } from "@/types/music";
+import { playChord, stopChord, initAudio, setFlamValue } from "@/utils/audio-utils";
 import { createChord, getScaleNotes, getMidiNote, getDiatonicChords, isChordTypeDiatonic } from "@/utils/chord-utils";
 import { Eye, Play } from "lucide-react-native";
 import { HorizontalPiano } from "@/components/HorizontalPiano";
@@ -15,17 +15,32 @@ import { EditButton } from '@/components/EditButton';
 import { ChordTypeButton } from '@/components/ChordTypeButton';
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { UtilButton } from "@/components/UtilButton";
+import * as Tone from 'tone';
 
 const KEYS: NoteName[] = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as NoteName[];
 const MODES: MusicMode[] = ['off', 'major', 'minor', 'dorian', 'phrygian', 'lydian', 'mixolydian', 'locrian'] as MusicMode[];
 
-type SettingType = 'bpm' | 'bars' | 'key' | 'mode' | 'octave' | 'inversion' | 'voicing';
+export type SettingType = 'bpm' | 'bars' | 'key' | 'mode' | 'octave' | 'inversion' | 'voicing' | 'instrument' | 'flam';
 
 type ChordTypeItem = {
   type: ChordType;
   label: string;
   color: string;
   bassOffset?: number;
+};
+
+// Add new types at the top with other type definitions
+type FlamOption = 'FLAM OFF' | 'FAST' | 'MED' | 'SLOW';
+
+// Map UI FlamOption to audio-utils FlamValue
+const flamOptionToFlamValue = (option: FlamOption): 'off' | '1/24' | '1/32' | '1/16' => {
+  switch (option) {
+    case 'FAST': return '1/32';
+    case 'MED': return '1/24';
+    case 'SLOW': return '1/16';
+    case 'FLAM OFF':
+    default: return 'off';
+  }
 };
 
 export default function ChordComposeScreen() {
@@ -38,7 +53,9 @@ export default function ChordComposeScreen() {
     setCurrentKey,
     currentMode,
     setCurrentMode,
-    setSavedChords
+    setSavedChords,
+    currentInstrument = 'balafon',
+    setCurrentInstrument
   } = useChordStore();
   
   const [selectedChordType, setSelectedChordType] = useState<ChordType | null>(null);
@@ -51,7 +68,7 @@ export default function ChordComposeScreen() {
   const [lastPlayedChord, setLastPlayedChord] = useState<Chord | null>(null);
   
   // For contextual +/- buttons
-  const [selectedControl, setSelectedControl] = useState<'bpm' | 'bars' | 'key' | 'mode' | 'octave' | 'inversion'>('key');
+  const [selectedControl, setSelectedControl] = useState<SettingType | undefined>(undefined);
   
   // For navigation menu
   const [menuVisible, setMenuVisible] = useState(false);
@@ -76,45 +93,63 @@ export default function ChordComposeScreen() {
   
   // Add state for minus button long press
   const [isMinusLongPressed, setIsMinusLongPressed] = useState(false);
+  const minusLongPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const minusAcceleratedTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // Add state for tracking pressed chord
-  const minusLongPressTimerRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // Add state for tracking the currently pressed note
-  const [pressedNote, setPressedNote] = useState<NoteName | null>(null);
-  
-  // Add new state for grid visibility
-  const [currentGrid, setCurrentGrid] = useState(0);
-  const totalGrids = 2; // We'll have 2 grids to toggle between
-  
-  // Add new state for EditButton
-  const [isCopyMode, setIsCopyMode] = useState(false);
-  const [copiedChord, setCopiedChord] = useState<Chord | null>(null);
-  const [copiedProgression, setCopiedProgression] = useState<Chord[] | null>(null);
-  
-  // Add progression-related state
-  const [currentProgression, setCurrentProgression] = useState<Chord[] | null>(null);
-  const [savedProgressions, setSavedProgressions] = useState<(Chord[] | null)[]>(Array(32).fill(null));
-  const [activeProgressionIndex, setActiveProgressionIndex] = useState<number | null>(null);
-  
-  // Add new state for EditButton
-  const [isEditPopupVisible, setIsEditPopupVisible] = useState(false);
-  
-  // Add new state for selected chord
-  const [selectedChord, setSelectedChord] = useState<Chord | null>(null);
-  const [nextChordToClear, setNextChordToClear] = useState<number | null>(null);
-  const [isEditMode, setIsEditMode] = useState(false);
-  
-  // Add state for tracking last pressed chord and copy/paste
   const [lastPressedChord, setLastPressedChord] = useState<Chord | null>(null);
   
-  // Initialize audio on component mount
+  // Add new state for sound selection
+  const [selectedSound, setSelectedSound] = useState<InstrumentType>('balafon');
+  const [isSoundWindowSelected, setIsSoundWindowSelected] = useState(false);
+
+  // Add available sounds array
+  const availableSounds: InstrumentType[] = ['balafon', 'piano', 'rhodes', 'steel_drum', 'pluck', 'pad'];
+  
+  // Add new state variables with other state declarations
+  const [selectedFlam, setSelectedFlam] = useState<FlamOption>('FLAM OFF');
+  const [isFlamSelected, setIsFlamSelected] = useState(false);
+  
+  const [synth, setSynth] = useState<Tone.PolySynth | null>(null);
+  const [chord, setChord] = useState<number[] | null>(null);
+  
+  // Add state for plus button long press
+  const [isPlusLongPressed, setIsPlusLongPressed] = useState(false);
+  const plusLongPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const plusAcceleratedTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Add state for grid navigation
+  const [currentGrid, setCurrentGrid] = useState(0);
+  const totalGrids = 2;
+  // Add state for pressed note
+  const [pressedNote, setPressedNote] = useState<NoteName | null>(null);
+  // Add state for edit mode
+  const [isEditMode, setIsEditMode] = useState(false);
+  // Add state for copy mode
+  const [isCopyMode, setIsCopyMode] = useState(false);
+  // Add state for copied chord
+  const [copiedChord, setCopiedChord] = useState<Chord | null>(null);
+  // Add state for next chord to clear
+  const [nextChordToClear, setNextChordToClear] = useState<number | null>(null);
+  // Add state for edit popup
+  const [isEditPopupVisible, setIsEditPopupVisible] = useState(false);
+
+  // Initialize audio on component mount - update to handle errors
   useEffect(() => {
     const setupAudio = async () => {
-      await initAudio();
+      try {
+        await initAudio();
+      } catch (error) {
+        console.error('Error initializing audio:', error);
+      }
     };
     
     setupAudio();
+    
+    // Cleanup function to stop any playing sounds
+    return () => {
+      stopChord().catch(console.error);
+    };
   }, []);
   
   // Update scale notes when key or mode changes
@@ -155,7 +190,6 @@ export default function ChordComposeScreen() {
   const handleNotePress = (noteName: NoteName, midiNote: number) => {
     setPressedNote(noteName);
     if (selectedChordType) {
-      // Create chord based on selected type and root note
       let bassNote: NoteName | undefined;
       
       if (selectedBassOffset !== null) {
@@ -165,11 +199,12 @@ export default function ChordComposeScreen() {
       }
       
       // Create the chord with the primary type
-      const chord = createChord(noteName, selectedChordType, 4 + octave, bassNote);
+      const newChord = createChord(noteName, selectedChordType, 4 + octave, bassNote);
+      if (!newChord) return;
       
       // Apply inversion if selected
-      if (inversion !== 0 && chord.notes.length >= 3) {
-        const notes = [...chord.notes];
+      if (inversion !== 0 && newChord.notes.length >= 3) {
+        const notes = [...newChord.notes];
         if (inversion < 0) {
           // Move notes down an octave for negative inversions
           for (let i = notes.length - 1; i >= notes.length - Math.abs(inversion); i--) {
@@ -181,15 +216,15 @@ export default function ChordComposeScreen() {
             notes[i] += 12; // Move up an octave
           }
         }
-        chord.notes = notes;
+        newChord.notes = notes;
       }
       
-      setCurrentChord(chord);
-      setLastPlayedChord(chord); // Store as last played chord
-      playChord(chord.notes);
+      setCurrentChord(newChord);
+      setLastPlayedChord(newChord);
+      playChord(newChord.notes);
       
       // Set temporary highlighted chord for visualization
-      setTempHighlightedChord(chord);
+      setTempHighlightedChord(newChord);
     } else {
       // Just play the single note
       playChord([midiNote]);
@@ -240,41 +275,103 @@ export default function ChordComposeScreen() {
     }
   };
   
-  // Handle value adjustments
-  const handleAdjustValue = (direction: 'up' | 'down') => {
-    switch (selectedControl) {
-      case 'key':
-        const currentIndex = KEYS.indexOf(currentKey);
-        if (direction === 'up') {
-          setCurrentKey(KEYS[(currentIndex + 1) % KEYS.length]);
-        } else {
-          setCurrentKey(KEYS[(currentIndex - 1 + KEYS.length) % KEYS.length]);
+  // Handle sound selection
+  const handleSoundSelect = () => {
+    if (isSoundWindowSelected) {
+      setIsSoundWindowSelected(false);
+    } else {
+      setIsSoundWindowSelected(true);
+      setSelectedControl(undefined);
+      setIsFlamSelected(false); // Deselect flam when sound is selected
+    }
+  };
+
+  // Handle control selection - update existing function
+  const handleControlSelect = (control: SettingType) => {
+    if (control === selectedControl) {
+      setSelectedControl(undefined);
+    } else {
+      setSelectedControl(control);
+      setIsSoundWindowSelected(false); // Deselect instrument window
+      setIsFlamSelected(false); // Deselect flam window
+    }
+  };
+
+  // Update handleAdjustValue for sound selection
+  const handleAdjustValue = async (direction: 'up' | 'down') => {
+    // Instrument window selection
+    if (isSoundWindowSelected) {
+      const currentIndex = availableSounds.indexOf(selectedSound);
+      let newIndex = currentIndex;
+      if (direction === 'up') {
+        newIndex = (currentIndex + 1) % availableSounds.length;
+      } else {
+        newIndex = (currentIndex - 1 + availableSounds.length) % availableSounds.length;
+      }
+      const newInstrument = availableSounds[newIndex];
+      await stopChord();
+      try {
+        await initAudio();
+        setSelectedSound(newInstrument);
+        setCurrentInstrument(newInstrument);
+      } catch (error) {
+        console.error('Error switching instrument:', error);
+        await initAudio().catch(console.error);
+      }
+      return;
+    }
+    // Flam window selection
+    if (isFlamSelected) {
+      const flamOptions: FlamOption[] = ['FLAM OFF', 'FAST', 'MED', 'SLOW'];
+      const currentIndex = flamOptions.indexOf(selectedFlam);
+      let newIndex = currentIndex;
+      if (direction === 'up') {
+        newIndex = (currentIndex + 1) % flamOptions.length;
+      } else {
+        newIndex = (currentIndex - 1 + flamOptions.length) % flamOptions.length;
+      }
+      setSelectedFlam(flamOptions[newIndex]);
+      return;
+    }
+
+    if (!selectedControl) return;
+
+    try {
+      switch (selectedControl) {
+        case 'key': {
+          const currentIndex = KEYS.indexOf(currentKey);
+          const newIndex = direction === 'up'
+            ? (currentIndex + 1) % KEYS.length
+            : (currentIndex - 1 + KEYS.length) % KEYS.length;
+          setCurrentKey(KEYS[newIndex]);
+          break;
         }
-        break;
-        
-      case 'mode':
-        const modeIndex = MODES.indexOf(currentMode);
-        if (direction === 'up') {
-          setCurrentMode(MODES[(modeIndex + 1) % MODES.length]);
-        } else {
-          setCurrentMode(MODES[(modeIndex - 1 + MODES.length) % MODES.length]);
+        case 'mode': {
+          const currentIndex = MODES.indexOf(currentMode);
+          const newIndex = direction === 'up'
+            ? (currentIndex + 1) % MODES.length
+            : (currentIndex - 1 + MODES.length) % MODES.length;
+          setCurrentMode(MODES[newIndex]);
+          break;
         }
-        break;
-        
-      case 'octave':
-        if (direction === 'up') {
-          setOctave(prev => prev < 3 ? prev + 1 : prev);
-        } else {
-          setOctave(prev => prev > -3 ? prev - 1 : prev);
+        case 'octave': {
+          setOctave(prev => {
+            const newValue = direction === 'up' ? prev + 1 : prev - 1;
+            return Math.max(-2, Math.min(5, newValue));
+          });
+          break;
         }
-        break;
-        
-      case 'inversion':
-        const newInversion = direction === 'up' ? inversion + 1 : inversion - 1;
-        if (newInversion >= -2 && newInversion <= 2) {
-          setInversion(newInversion);
+        case 'inversion': {
+          setInversion(prev => {
+            const newValue = direction === 'up' ? prev + 1 : prev - 1;
+            return Math.max(-3, Math.min(3, newValue));
+          });
+          break;
         }
-        break;
+        // Add other cases as needed
+      }
+    } catch (error) {
+      console.error('Error in handleAdjustValue:', error);
     }
   };
 
@@ -375,13 +472,6 @@ export default function ChordComposeScreen() {
   // Toggle navigation menu
   const toggleMenu = () => {
     setMenuVisible(!menuVisible);
-  };
-
-  // Handle control selection
-  const handleControlSelect = (control: 'bpm' | 'bars' | 'key' | 'mode' | 'octave' | 'inversion' | '') => {
-    if (control !== '') {
-      setSelectedControl(control);
-    }
   };
 
   // Get chord display name for settings panel
@@ -496,23 +586,49 @@ export default function ChordComposeScreen() {
     ],
   ];
 
+  // Plus button handlers
+  const handlePlusButtonPressIn = () => {
+    handleAdjustValue('up'); // Single tap
+    plusLongPressTimerRef.current = setTimeout(() => {
+      setIsPlusLongPressed(true);
+      plusAcceleratedTimerRef.current = setInterval(() => {
+        handleAdjustValue('up');
+      }, 50);
+    }, 500);
+  };
+  const handlePlusButtonPressOut = () => {
+    if (plusLongPressTimerRef.current) {
+      clearTimeout(plusLongPressTimerRef.current);
+      plusLongPressTimerRef.current = null;
+    }
+    if (plusAcceleratedTimerRef.current) {
+      clearInterval(plusAcceleratedTimerRef.current);
+      plusAcceleratedTimerRef.current = null;
+    }
+    setIsPlusLongPressed(false);
+  };
+
   // Update minus button press handlers
   const handleMinusButtonPressIn = () => {
-    // No special handling needed
+    handleAdjustValue('down'); // Single tap
+    minusLongPressTimerRef.current = setTimeout(() => {
+      setIsMinusLongPressed(true);
+      minusAcceleratedTimerRef.current = setInterval(() => {
+        handleAdjustValue('down');
+      }, 50);
+    }, 500);
   };
-
   const handleMinusButtonPressOut = () => {
-    handleAdjustValue('down');
+    if (minusLongPressTimerRef.current) {
+      clearTimeout(minusLongPressTimerRef.current);
+      minusLongPressTimerRef.current = null;
+    }
+    if (minusAcceleratedTimerRef.current) {
+      clearInterval(minusAcceleratedTimerRef.current);
+      minusAcceleratedTimerRef.current = null;
+    }
+    setIsMinusLongPressed(false);
   };
-
-  // Cleanup timer on unmount
-  useEffect(() => {
-    return () => {
-      if (minusLongPressTimerRef.current) {
-        clearTimeout(minusLongPressTimerRef.current);
-      }
-    };
-  }, []);
 
   // Add function to handle grid navigation
   const handleGridChange = () => {
@@ -557,26 +673,61 @@ export default function ChordComposeScreen() {
     setIsEditPopupVisible(false);
   };
 
-  // Add new handler functions for UtilButton
-  const handleSoundsPress = () => {
-    // Navigate to sounds page or handle sounds functionality
-    router.push('/sounds');
+  // Add this helper function near the other utility functions
+  const formatInstrumentName = (name: InstrumentType): string => {
+    if (name === 'steel_drum') return 'STEEL DRUM';
+    return name.toUpperCase();
   };
 
-  const handleUChordPress = () => {
-    // Navigate to the user chord screen
-    router.push('/user-chord');
+  // Add new handler functions before the return statement
+  const handleFlamSelect = () => {
+    if (isFlamSelected) {
+      setIsFlamSelected(false);
+    } else {
+      setIsFlamSelected(true);
+      setSelectedControl(undefined); // Deselect other controls
+      setIsSoundWindowSelected(false); // Deselect sound window
+    }
   };
 
-  const handleScanPress = () => {
-    // Handle Scan functionality
-    console.log('Scan pressed');
+  const handleFlamAdjust = (direction: 'up' | 'down') => {
+    const flamOptions: FlamOption[] = ['FLAM OFF', 'FAST', 'MED', 'SLOW'];
+    const currentIndex = flamOptions.indexOf(selectedFlam);
+    
+    if (direction === 'up') {
+      setSelectedFlam(flamOptions[(currentIndex + 1) % flamOptions.length]);
+    } else {
+      setSelectedFlam(flamOptions[(currentIndex - 1 + flamOptions.length) % flamOptions.length]);
+    }
   };
 
-  const handleSessionPress = () => {
-    // Handle Session functionality
-    console.log('Session pressed');
+  const playChordFromNotes = async (chordNotes: number[]) => {
+    if (!synth) return;
+    try {
+      setChord(chordNotes);
+      const frequencies = chordNotes.map(note => Tone.Frequency(note, "midi").toFrequency());
+      synth.triggerAttack(frequencies);
+    } catch (error) {
+      console.error('Error playing chord:', error);
+    }
   };
+
+  const handleChordPress = (chord: Chord) => {
+    if (!isChordButtonPressedRef.current) {
+      setCurrentChord(chord);
+      setLastPlayedChord(chord);
+      const midiNotes = chord.notes;
+      playChordFromNotes(midiNotes);
+    }
+  };
+
+  const handleSettingSelect = (setting: SettingType | undefined) => {
+    setSelectedControl(setting);
+  };
+
+  useEffect(() => {
+    setFlamValue(flamOptionToFlamValue(selectedFlam));
+  }, [selectedFlam]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -604,16 +755,6 @@ export default function ChordComposeScreen() {
         <Text style={styles.verticalTitleText}>E</Text>
       </View>
       
-      {/* Remove UtilButton from gridNavContainer and add it separately */}
-      <View style={styles.utilButtonContainer}>
-        <UtilButton
-          onSoundsPress={handleSoundsPress}
-          onUChordPress={handleUChordPress}
-          onScanPress={handleScanPress}
-          onSessionPress={handleSessionPress}
-        />
-      </View>
-
       <View style={styles.gridNavContainer}>
         <Pressable 
           style={styles.gridNavButton}
@@ -675,8 +816,8 @@ export default function ChordComposeScreen() {
               chord={getCurrentChordDisplay()}
               selectedKey={currentKey}
               inversion={inversion}
-              selectedSetting={selectedControl}
-              onSettingSelect={handleControlSelect}
+              selectedSetting={selectedControl as any}
+              onSettingSelect={(setting) => handleControlSelect(setting as SettingType)}
             />
             
             {/* Piano keyboard */}
@@ -760,14 +901,14 @@ export default function ChordComposeScreen() {
       
       {/* Plus/Minus buttons at right - restored to original position */}
       <View style={styles.plusMinusContainer}>
-        <Pressable 
+        <Pressable
           style={styles.plusButton}
-          onPress={() => handleAdjustValue('up')}
+          onPressIn={handlePlusButtonPressIn}
+          onPressOut={handlePlusButtonPressOut}
         >
           <Text style={styles.plusMinusText}>+</Text>
         </Pressable>
-        
-        <Pressable 
+        <Pressable
           style={styles.minusButton}
           onPressIn={handleMinusButtonPressIn}
           onPressOut={handleMinusButtonPressOut}
@@ -822,6 +963,32 @@ export default function ChordComposeScreen() {
           </Pressable>
         </Pressable>
       )}
+
+      {/* Sound selection window */}
+      <Pressable 
+        style={[
+          styles.soundWindow,
+          isSoundWindowSelected && styles.soundWindowSelected
+        ]}
+        onPress={handleSoundSelect}
+      >
+        <Text style={styles.soundText}>{formatInstrumentName(selectedSound)}</Text>
+      </Pressable>
+
+      {/* Add Flam button before the sound window */}
+      <Pressable 
+        style={[
+          styles.flamWindow,
+          isFlamSelected && styles.flamWindowSelected
+        ]}
+        onPress={handleFlamSelect}
+      >
+        {selectedFlam === 'FLAM OFF' ? (
+          <Text style={styles.flamText}>FLAM</Text>
+        ) : (
+          <Text style={styles.flamText}>{selectedFlam}</Text>
+        )}
+      </Pressable>
     </SafeAreaView>
   );
 }
@@ -1032,7 +1199,7 @@ const styles = StyleSheet.create({
   },
   gridNavContainer: {
     position: 'absolute',
-    left: 182,
+    left: 79,
     top: 240,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1141,11 +1308,81 @@ const styles = StyleSheet.create({
     fontSize: 21.6,
     fontWeight: '600',
   },
-  // Add new style for independent UtilButton container
-  utilButtonContainer: {
+  soundWindow: {
     position: 'absolute',
-    left: 42, // Changed from 62 to 42 to move 20px left
-    top: 240,
+    left: 140,  // Changed from 142 to 140 to move left by 2
+    top: 248,
+    width: 132,
+    height: 34,
+    backgroundColor: colors.buttonGrey,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
     zIndex: 10,
+  },
+  soundWindowSelected: {
+    borderColor: 'rgba(255, 255, 255, 0.3)',  // Lighter grey for selected state
+    borderWidth: 2,
+  },
+  soundText: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '500',
+    paddingTop: 3,  // Increased from 2 to 3 to move text down further
+  },
+  flamWindow: {
+    position: 'absolute',
+    left: 279,
+    top: 248,
+    width: 66,
+    height: 34,
+    backgroundColor: colors.buttonGrey,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  flamWindowSelected: {
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderWidth: 2,
+  },
+  flamText: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '500',
+    paddingTop: 6,
+  },
+  flamTextSmall: {
+    color: colors.text,
+    fontSize: 11,  // Reduced from 12 to 11 (approximately 10% smaller)
+    fontWeight: '500',
+    lineHeight: 13,  // Adjusted line height to match new font size
+  },
+  controlWindow: {
+    position: 'absolute',
+    width: 66,
+    height: 34,
+    backgroundColor: colors.buttonGrey,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  controlWindowSelected: {
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderWidth: 2,
+  },
+  controlText: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 13,
   },
 });

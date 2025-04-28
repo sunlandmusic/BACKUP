@@ -1,5 +1,5 @@
-import React from 'react';
-import { Modal, View, Text, StyleSheet, Platform, Pressable } from 'react-native';
+import React, { useRef, useEffect } from 'react';
+import { Modal, View, Text, StyleSheet, Platform, Pressable, Alert } from 'react-native';
 import { colors } from '@/constants/colors';
 import { UserChordEditor } from './UserChordEditor';
 import { useChordStore } from '@/stores/chord-store';
@@ -15,6 +15,13 @@ const UserChordPopup: React.FC<UserChordPopupProps> = ({
   onClose,
 }) => {
   const { setCurrentChord, savedChords, saveChord, setUserChordType } = useChordStore();
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   // Find next empty slot in saved chords
   const findNextEmptySlot = () => {
@@ -27,17 +34,35 @@ const UserChordPopup: React.FC<UserChordPopupProps> = ({
   };
 
   // Handle saving chord type to U button
-  const handleSaveToU = (chordType: ChordType) => {
-    setUserChordType(chordType);
-    onClose();
+  const handleSaveToU = async (chordType: ChordType) => {
+    try {
+      if (!isMounted.current) return;
+      await setUserChordType(chordType);
+      onClose();
+    } catch (e) {
+      console.error('Error saving chord type:', e);
+      if (isMounted.current) {
+        Alert.alert('Error', 'Failed to save chord type. Please try again.');
+      }
+    }
   };
 
   // Handle saving to next empty slot
-  const handleSaveToSlot = (chord: Chord) => {
-    const nextEmptySlot = findNextEmptySlot();
-    if (nextEmptySlot !== -1) {
-      saveChord(chord, nextEmptySlot);
-      setCurrentChord(chord); // Update current chord
+  const handleSaveToSlot = async (chord: Chord) => {
+    try {
+      if (!isMounted.current) return;
+      const nextEmptySlot = findNextEmptySlot();
+      if (nextEmptySlot !== -1) {
+        await saveChord(chord, nextEmptySlot);
+        await setCurrentChord(chord); // Update current chord
+      } else {
+        Alert.alert('Error', 'No empty slots available. Please delete some saved chords first.');
+      }
+    } catch (e) {
+      console.error('Error saving chord to slot:', e);
+      if (isMounted.current) {
+        Alert.alert('Error', 'Failed to save chord. Please try again.');
+      }
     }
   };
 

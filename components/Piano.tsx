@@ -333,7 +333,7 @@ const styles = StyleSheet.create({
   },
   blackKeyInScale: {
     borderColor: colors.primary,
-    borderWidth: 2,
+    borderWidth: 1.8,
   },
   keyLabel: {
     color: colors.background,

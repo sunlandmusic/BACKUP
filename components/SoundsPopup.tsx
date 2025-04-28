@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Modal, View, Text, StyleSheet, Platform, Pressable, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Modal, View, Text, StyleSheet, Platform, Pressable, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { colors } from '@/constants/colors';
 import { InstrumentSelector } from '@/components/InstrumentSelector';
 import { SavedChordGrid } from '@/components/SavedChordGrid';
@@ -28,6 +28,8 @@ const SoundsPopup: React.FC<SoundsPopupProps> = ({
   
   const [isSecondPage, setIsSecondPage] = useState(false);
   const [activeChordIndex, setActiveChordIndex] = useState<number | null>(null);
+  const isMounted = useRef(true);
+  const activeTimeoutRef = useRef<NodeJS.Timeout>();
   
   // Filter out null chords
   const filteredChords = React.useMemo(() => 
@@ -37,46 +39,84 @@ const SoundsPopup: React.FC<SoundsPopupProps> = ({
   
   console.log('Filtered chords length:', filteredChords.length);
   
-  // Reset page when modal opens
+  // Reset page and cleanup when modal opens/closes
   useEffect(() => {
     if (visible) {
       setIsSecondPage(false);
       setActiveChordIndex(null);
     }
+    
+    return () => {
+      isMounted.current = false;
+      if (activeTimeoutRef.current) {
+        clearTimeout(activeTimeoutRef.current);
+      }
+      stopChord().catch(console.error);
+    };
   }, [visible]);
   
-  // Cleanup effect
-  useEffect(() => {
-    return () => {
-      if (activeChordIndex !== null) {
-        stopChord();
-      }
-    };
-  }, [activeChordIndex]);
-  
   // Handle instrument change
-  const handleInstrumentChange = useCallback((instrument: InstrumentType) => {
-    setCurrentInstrument(instrument);
+  const handleInstrumentChange = useCallback(async (instrument: InstrumentType) => {
+    try {
+      if (!isMounted.current) return;
+      await setCurrentInstrument(instrument);
+    } catch (e) {
+      console.error('Error changing instrument:', e);
+      if (isMounted.current) {
+        Alert.alert('Error', 'Failed to change instrument. Please try again.');
+      }
+    }
   }, [setCurrentInstrument]);
   
   // Handle flam change
-  const handleFlamChange = useCallback((value: string) => {
-    setCurrentFlamValue(value as FlamValue);
+  const handleFlamChange = useCallback(async (value: string) => {
+    try {
+      if (!isMounted.current) return;
+      await setCurrentFlamValue(value as FlamValue);
+    } catch (e) {
+      console.error('Error changing flam value:', e);
+      if (isMounted.current) {
+        Alert.alert('Error', 'Failed to change flam value. Please try again.');
+      }
+    }
   }, [setCurrentFlamValue]);
   
   // Handle saved chord press
-  const handleSavedChordPress = useCallback((chord: Chord, index: number) => {
-    setActiveChordIndex(index);
-    setCurrentChord(chord);
-    setTimeout(() => {
-      playChord(chord.notes);
-    }, 50);
+  const handleSavedChordPress = useCallback(async (chord: Chord, index: number) => {
+    try {
+      if (!isMounted.current) return;
+      setActiveChordIndex(index);
+      setCurrentChord(chord);
+      
+      // Clear any existing timeout
+      if (activeTimeoutRef.current) {
+        clearTimeout(activeTimeoutRef.current);
+      }
+      
+      // Set new timeout
+      activeTimeoutRef.current = setTimeout(async () => {
+        if (isMounted.current) {
+          await playChord(chord.notes);
+        }
+      }, 50);
+    } catch (e) {
+      console.error('Error playing chord:', e);
+      if (isMounted.current) {
+        setActiveChordIndex(null);
+        Alert.alert('Error', 'Failed to play chord. Please try again.');
+      }
+    }
   }, [setCurrentChord]);
   
   // Handle saved chord release
-  const handleSavedChordRelease = useCallback(() => {
-    stopChord();
-    setActiveChordIndex(null);
+  const handleSavedChordRelease = useCallback(async () => {
+    try {
+      if (!isMounted.current) return;
+      await stopChord();
+      setActiveChordIndex(null);
+    } catch (e) {
+      console.error('Error stopping chord:', e);
+    }
   }, []);
 
   // Get current page of chords

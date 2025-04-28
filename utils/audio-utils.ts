@@ -8,6 +8,10 @@ import * as Tone from 'tone';
 let audioContext: AudioContext | null = null;
 let oscillators: { [key: number]: OscillatorNode } = {};
 let gainNodes: { [key: number]: GainNode } = {};
+let gainNode: GainNode | null = null;
+let lowEQ: BiquadFilterNode | null = null;
+let midEQ: BiquadFilterNode | null = null;
+let highEQ: BiquadFilterNode | null = null;
 
 // For native platforms - sound objects
 type SoundObjects = {
@@ -28,6 +32,10 @@ let currentFlamValue: FlamValue = 'off';
 
 // Current BPM for flam synchronization
 let currentBpm: number = 120;
+
+// Sound parameter settings
+let currentSampleStart = 0;
+let currentSustain = 100;
 
 // Debug flag - set to true to see detailed logs
 const DEBUG_AUDIO = false;  // Set to false to disable all audio debug logs
@@ -117,6 +125,29 @@ export const initAudio = async () => {
       // Sync Tone.js with our audio context
       Tone.setContext(audioContext);
       
+      // Create gain node
+      gainNode = audioContext.createGain();
+      gainNode.connect(audioContext.destination);
+      
+      // Create EQ nodes
+      lowEQ = audioContext.createBiquadFilter();
+      lowEQ.type = 'lowshelf';
+      lowEQ.frequency.value = 320;
+      
+      midEQ = audioContext.createBiquadFilter();
+      midEQ.type = 'peaking';
+      midEQ.frequency.value = 1000;
+      midEQ.Q.value = 1;
+      
+      highEQ = audioContext.createBiquadFilter();
+      highEQ.type = 'highshelf';
+      highEQ.frequency.value = 3200;
+      
+      // Connect the nodes
+      lowEQ.connect(midEQ);
+      midEQ.connect(highEQ);
+      highEQ.connect(gainNode);
+      
       isAudioInitialized = true;
       return true;
     } catch (e) {
@@ -124,41 +155,53 @@ export const initAudio = async () => {
       throw e;
     }
   } else {
-    if (isAudioInitialized) {
+    if (isAudioInitialized && Object.keys(soundObjects).length > 0) {
       return true;
     }
 
     try {
       console.log('Starting audio initialization...');
       
-      // Comment out the audio mode setup
-      // await Audio.setAudioModeAsync({
-      //   allowsRecordingIOS: false,
-      //   staysActiveInBackground: true,
-      //   playsInSilentModeIOS: true,
-      //   shouldDuckAndroid: true,
-      //   playThroughEarpieceAndroid: false,
-      // });
-
       // Reset state
       await cleanup();
       
-      // Comment out sound initialization
-      // noteSounds = await Promise.all(
-      //   Array(NUM_NOTE_SOUNDS).fill(null).map(() => createSound(require('../../assets/sounds/PIANO.mp3')))
-      // );
-      
-      // if (noteSounds.some(sound => sound === null)) {
-      //   throw new Error('Failed to load all note sounds');
-      // }
+      // Initialize all instrument sounds
+      const instrumentSoundMap = {
+        balafon: BALAFON,
+        piano: PIANO,
+        rhodes: RHODES,
+        pluck: PLUCK,
+        pad: PAD,
+        steel_drum: STEEL_DRUM
+      };
 
-      // clickSound = await createSound(require('../../assets/sounds/CLICK.mp3'));
-      // if (!clickSound) {
-      //   throw new Error('Failed to load click sound');
-      // }
+      // Load all instrument sounds
+      await Promise.all(
+        Object.entries(instrumentSoundMap).map(async ([instrument, soundFile]) => {
+          try {
+            const { sound } = await Audio.Sound.createAsync(
+              soundFile,
+              { 
+                shouldPlay: false,
+                volume: 1.0,
+                progressUpdateIntervalMillis: 50
+              }
+            );
+            soundObjects[instrument] = sound;
+            logDebug(`Loaded sound for ${instrument}`);
+          } catch (e) {
+            console.error(`Error loading sound for ${instrument}:`, e);
+          }
+        })
+      );
+
+      // Verify we have at least one instrument loaded
+      if (Object.keys(soundObjects).length === 0) {
+        throw new Error('Failed to load any instrument sounds');
+      }
 
       isAudioInitialized = true;
-      console.log('Audio initialization complete');
+      console.log('Audio initialization complete with instruments:', Object.keys(soundObjects));
       return true;
 
     } catch (error) {
@@ -170,143 +213,272 @@ export const initAudio = async () => {
   }
 };
 
+// Clean up resources
+export const cleanup = async (): Promise<void> => {
+  try {
+    // Stop all playing sounds first
+    await stopAllSounds();
+    
+    if (Platform.OS === 'web') {
+      // Clean up web audio resources
+      Object.values(oscillators).forEach(osc => {
+        try {
+          osc.stop();
+          osc.disconnect();
+        } catch (e) {
+          console.error('Error cleaning up oscillator:', e);
+        }
+      });
+      
+      Object.values(gainNodes).forEach(gain => {
+        try {
+          gain.disconnect();
+        } catch (e) {
+          console.error('Error cleaning up gain node:', e);
+        }
+      });
+
+      // Reset oscillators and gain nodes
+      oscillators = {};
+      gainNodes = {};
+
+      // Close and reset audio context if it exists
+      if (audioContext) {
+        try {
+          await audioContext.close();
+          audioContext = null;
+        } catch (e) {
+          console.error('Error closing audio context:', e);
+        }
+      }
+    }
+    
+    // Unload all sounds with proper error handling
+    await Promise.all(
+      Object.entries(soundObjects).map(async ([key, sound]) => {
+        if (sound) {
+          try {
+            const status = await sound.getStatusAsync();
+            if (status.isLoaded) {
+              await sound.stopAsync();
+              await sound.unloadAsync();
+            }
+          } catch (e) {
+            console.error(`Error unloading sound ${key}:`, e);
+          }
+        }
+      })
+    );
+    
+    // Reset all state
+    soundObjects = {};
+    isAudioInitialized = false;
+    currentInstrument = 'balafon';
+    currentFlamValue = 'off';
+    currentBpm = 120;
+    isCurrentlyPlaying = false;
+    
+  } catch (e) {
+    console.error('Error during cleanup:', e);
+  }
+};
+
+// Check audio health and reinitialize if needed
+const ensureAudioHealth = async (): Promise<boolean> => {
+  try {
+    if (Platform.OS === 'web') {
+      if (!audioContext || audioContext.state === 'closed' || audioContext.state === 'suspended') {
+        logDebug('Audio context needs reinitialization');
+        await cleanup();
+        await initAudio();
+        return true;
+      }
+    } else {
+      // For mobile, check if we can still play sounds
+      if (!isAudioInitialized) {
+        logDebug('Audio not initialized, reinitializing');
+        await initAudio();
+        return true;
+      }
+    }
+    return true;
+  } catch (e) {
+    console.error('Error in ensureAudioHealth:', e);
+    return false;
+  }
+};
+
 // Play a note (mobile optimized)
 export const playNote = async (midiNote: number) => {
-  if (Platform.OS === 'web') {
-    try {
-      // Initialize audio context if needed
-      if (!audioContext || audioContext.state === 'closed') {
-        await initAudio();
-      }
-      
-      if (!audioContext) {
-        throw new Error('Failed to initialize audio context');
-      }
-
-      // Ensure audio context is running
-      if (audioContext.state === 'suspended') {
-        await audioContext.resume();
-      }
-
-      // Stop any existing note
-      await stopNote(midiNote);
-
-      // Cache current time to avoid multiple property access
-      const currentTime = audioContext.currentTime;
-
-      // Create oscillator and gain node
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-
-      // Set oscillator type based on instrument
-      switch (currentInstrument) {
-        case 'piano':
-          oscillator.type = 'triangle';
-          break;
-        case 'rhodes':
-          oscillator.type = 'sine';
-          break;
-        case 'pluck':
-          oscillator.type = 'sawtooth';
-          break;
-        case 'pad':
-          oscillator.type = 'sine';
-          break;
-        case 'steel_drum':
-          oscillator.type = 'triangle';
-          break;
-        case 'balafon':
-        default:
-          oscillator.type = 'sine';
-          break;
-      }
-
-      // Set frequency from MIDI note
-      const frequency = 440 * Math.pow(2, (midiNote - 69) / 12);
-      oscillator.frequency.setValueAtTime(frequency, currentTime);
-
-      // Connect nodes
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-
-      // Improved envelope timing
-      gainNode.gain.setValueAtTime(0, currentTime);
-      gainNode.gain.linearRampToValueAtTime(0.7, currentTime + 0.02);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.5);
-
-      // Store references
-      oscillators[midiNote] = oscillator;
-      gainNodes[midiNote] = gainNode;
-
-      // Start oscillator
-      oscillator.start(currentTime);
-
-      // Schedule cleanup
-      setTimeout(() => {
-        stopNote(midiNote);
-      }, 500);
-
-    } catch (e) {
-      console.error('Error playing note on web:', e);
-      // Clean up any partial resources
-      delete oscillators[midiNote];
-      delete gainNodes[midiNote];
-    }
-  } else {
-    try {
-      if (!isAudioInitialized) {
-        await initAudio();
-      }
-
-      // Get the base sound for the current instrument
-      const baseSound = soundObjects[currentInstrument];
-      if (!baseSound) {
-        throw new Error('No base sound loaded for current instrument');
-      }
-
-      // Create a new sound instance with optimized settings
-      const { sound: noteSound } = await Audio.Sound.createAsync(
-        {
-          balafon: BALAFON,
-          piano: PIANO,
-          rhodes: RHODES,
-          pluck: PLUCK,
-          pad: PAD,
-          steel_drum: STEEL_DRUM,
-        }[currentInstrument],
-        { 
-          shouldPlay: false,
-          volume: 1.0,
-          rate: Math.pow(2, (midiNote - 60) / 12),
-          shouldCorrectPitch: true,
-          progressUpdateIntervalMillis: 50,
-          positionMillis: 0
+  try {
+    await ensureAudioHealth();
+    
+    if (Platform.OS === 'web') {
+      try {
+        // Initialize audio context if needed
+        if (!audioContext || audioContext.state === 'closed') {
+          await initAudio();
         }
-      );
+        
+        if (!audioContext) {
+          throw new Error('Failed to initialize audio context');
+        }
 
-      // Store for cleanup with unique key
-      const noteKey = `${currentInstrument}_${midiNote}_${Date.now()}`;
-      soundObjects[noteKey] = noteSound;
+        // Ensure audio context is running
+        if (audioContext.state === 'suspended') {
+          await audioContext.resume();
+        }
 
-      // Play the sound
-      await noteSound.playAsync();
+        // Stop any existing note
+        await stopNote(midiNote);
 
-      // Cleanup after sound finishes (typical note duration)
-      setTimeout(async () => {
-        try {
-          if (soundObjects[noteKey]) {
-            await soundObjects[noteKey]?.unloadAsync();
-            delete soundObjects[noteKey];
+        // Cache current time to avoid multiple property access
+        const currentTime = audioContext.currentTime;
+
+        // Create oscillator and gain node
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+
+        // Set oscillator type based on instrument
+        switch (currentInstrument) {
+          case 'piano':
+            oscillator.type = 'triangle';
+            break;
+          case 'rhodes':
+            oscillator.type = 'sine';
+            break;
+          case 'pluck':
+            oscillator.type = 'sawtooth';
+            break;
+          case 'pad':
+            oscillator.type = 'sine';
+            break;
+          case 'steel_drum':
+            oscillator.type = 'triangle';
+            break;
+          case 'balafon':
+          default:
+            oscillator.type = 'sine';
+            break;
+        }
+
+        // Set frequency from MIDI note
+        const frequency = 440 * Math.pow(2, (midiNote - 69) / 12);
+        oscillator.frequency.setValueAtTime(frequency, currentTime);
+
+        // Connect nodes
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        // Improved envelope timing
+        gainNode.gain.setValueAtTime(0, currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.7, currentTime + 0.02);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.5);
+
+        // Store references
+        oscillators[midiNote] = oscillator;
+        gainNodes[midiNote] = gainNode;
+
+        // Start oscillator
+        oscillator.start(currentTime);
+
+        // Schedule cleanup
+        setTimeout(() => {
+          stopNote(midiNote);
+        }, 500);
+
+      } catch (e) {
+        console.error('Error playing note on web:', e);
+        await cleanup();
+        throw e;
+      }
+    } else {
+      try {
+        if (!isAudioInitialized) {
+          await initAudio();
+        }
+
+        // If the current instrument sound isn't loaded, try to load it
+        if (!soundObjects[currentInstrument]) {
+          const soundFile = {
+            balafon: BALAFON,
+            piano: PIANO,
+            rhodes: RHODES,
+            pluck: PLUCK,
+            pad: PAD,
+            steel_drum: STEEL_DRUM
+          }[currentInstrument];
+
+          if (soundFile) {
+            const { sound } = await Audio.Sound.createAsync(
+              soundFile,
+              { 
+                shouldPlay: false,
+                volume: 1.0,
+                progressUpdateIntervalMillis: 50
+              }
+            );
+            soundObjects[currentInstrument] = sound;
           }
-        } catch (e) {
-          console.warn(`Cleanup error for note ${midiNote}:`, e);
         }
-      }, 2000);
 
-      logDebug(`Playing note ${midiNote} with instrument ${currentInstrument}`);
-    } catch (e) {
-      console.error(`Error playing note ${midiNote}:`, e);
+        // Get the base sound for the current instrument
+        const baseSound = soundObjects[currentInstrument];
+        if (!baseSound) {
+          console.warn(`No sound loaded for ${currentInstrument}, falling back to piano`);
+          // Fall back to piano if current instrument isn't available
+          currentInstrument = 'piano';
+          await initAudio(); // Reinitialize to load piano sound
+        }
+
+        // Create a new sound instance with optimized settings
+        const { sound: noteSound } = await Audio.Sound.createAsync(
+          {
+            balafon: BALAFON,
+            piano: PIANO,
+            rhodes: RHODES,
+            pluck: PLUCK,
+            pad: PAD,
+            steel_drum: STEEL_DRUM
+          }[currentInstrument],
+          { 
+            shouldPlay: false,
+            volume: 1.0,
+            rate: Math.pow(2, (midiNote - 60) / 12),
+            shouldCorrectPitch: true,
+            progressUpdateIntervalMillis: 50,
+            positionMillis: 0
+          }
+        );
+
+        // Store for cleanup with unique key
+        const noteKey = `${currentInstrument}_${midiNote}_${Date.now()}`;
+        soundObjects[noteKey] = noteSound;
+
+        // Play the sound
+        await noteSound.playAsync();
+
+        // Cleanup after sound finishes (typical note duration)
+        setTimeout(async () => {
+          try {
+            if (soundObjects[noteKey]) {
+              await soundObjects[noteKey]?.unloadAsync();
+              delete soundObjects[noteKey];
+            }
+          } catch (e) {
+            console.warn(`Cleanup error for note ${midiNote}:`, e);
+          }
+        }, 2000);
+
+        logDebug(`Playing note ${midiNote} with instrument ${currentInstrument}`);
+      } catch (e) {
+        console.error(`Error playing note ${midiNote}:`, e);
+      }
     }
+  } catch (e) {
+    console.error('Error in playNote:', e);
+    await cleanup();  // Clean up on error
+    throw e;
   }
 };
 
@@ -394,136 +566,128 @@ export const stopNote = async (midiNote: number) => {
 // Play a chord (multiple notes simultaneously)
 export const playChord = async (midiNotes: number[]) => {
   try {
+    // Ensure audio is initialized
     if (!isAudioInitialized) {
       await initAudio();
     }
 
+    // Stop any currently playing sounds
+    await stopAllSounds();
+
     if (Platform.OS === 'web') {
-      // Web implementation
-      if (!audioContext) {
-        await initAudio();
+      if (!audioContext || !gainNode || !lowEQ || !midEQ || !highEQ) {
+        throw new Error('Audio nodes not initialized');
       }
 
-      if (audioContext?.state === 'suspended') {
-        await audioContext.resume();
-      }
+      // Create and connect oscillators for each note
+      midiNotes.forEach((midiNote, index) => {
+        const osc = audioContext!.createOscillator();
+        const noteGain = audioContext!.createGain();
 
-      // Stop any currently playing notes
-      await stopChord();
+        // Connect through EQ chain
+        osc.connect(noteGain);
+        noteGain.connect(lowEQ!);
 
-      // Play each note in the chord
-      midiNotes.forEach(midiNote => {
-        try {
-          playNote(midiNote);
-        } catch (error) {
-          handleAudioError(error);
-        }
-      });
-    } else {
-      // Mobile implementation
-      try {
-        // Create all note sounds first
-        const noteSounds = await Promise.all(
-          midiNotes.map(async (midiNote) => {
-            try {
-              const { sound } = await Audio.Sound.createAsync(
-                {
-                  balafon: BALAFON,
-                  piano: PIANO,
-                  rhodes: RHODES,
-                  pluck: PLUCK,
-                  pad: PAD,
-                  steel_drum: STEEL_DRUM,
-                }[currentInstrument],
-                { 
-                  shouldPlay: false,
-                  volume: 1.0,
-                  rate: Math.pow(2, (midiNote - 60) / 12),
-                  shouldCorrectPitch: true,
-                }
-              );
-              return { midiNote, sound };
-            } catch (error) {
-              handleAudioError(error);
-              return null;
-            }
-          })
+        osc.frequency.value = midiToFrequency(midiNote);
+        
+        // Apply sample start delay
+        const startTime = audioContext!.currentTime + (currentSampleStart / 1000);
+        
+        // Set initial gain and apply sustain
+        const initialGain = 0.5;
+        noteGain.gain.value = 0;
+        noteGain.gain.setValueAtTime(0, startTime);
+        noteGain.gain.linearRampToValueAtTime(initialGain, startTime + 0.01);
+        noteGain.gain.exponentialRampToValueAtTime(
+          initialGain * (currentSustain / 100),
+          startTime + 2.0
         );
 
-        // Filter out any null sounds from failed loads
-        const validSounds = noteSounds.filter((note): note is { midiNote: number; sound: Audio.Sound } => note !== null);
+        // Store references for cleanup
+        oscillators[midiNote] = osc;
+        gainNodes[midiNote] = noteGain;
 
-        // Play all notes based on flam setting
-        if (currentFlamValue === 'off') {
-          // Play all notes simultaneously with no delay
-          const playPromises = validSounds.map(async ({ midiNote, sound }) => {
-            try {
-              const noteKey = `${currentInstrument}_${midiNote}`;
-              soundObjects[noteKey] = sound;
-              await sound.playAsync();
-            } catch (error) {
-              handleAudioError(error);
-            }
-          });
-          await Promise.all(playPromises);
-        } else {
-          // Play with flam delay
-          const flamDelay = getFlamDelay(currentFlamValue);
-          for (let i = 0; i < validSounds.length; i++) {
-            const { midiNote, sound } = validSounds[i];
-            try {
-              const noteKey = `${currentInstrument}_${midiNote}`;
-              soundObjects[noteKey] = sound;
-              if (i > 0) { // Only add delay for notes after the first one
-                await new Promise<void>(resolve => {
-                  setTimeout(async () => {
-                    try {
-                      await sound.playAsync();
-                    } catch (error) {
-                      handleAudioError(error);
-                    }
-                    resolve();
-                  }, i * flamDelay);
-                });
-              } else {
-                await sound.playAsync(); // Play first note immediately
-              }
-            } catch (error) {
-              handleAudioError(error);
-            }
-          }
-        }
+        // Apply flam if enabled
+        const flamDelay = getFlamDelay(currentFlamValue, currentBpm);
+        const noteDelay = index * flamDelay;
+        
+        osc.start(startTime + (noteDelay / 1000));
+      });
 
-        // Stop previous sounds after a small delay
-        setTimeout(async () => {
-          const previousSounds = Object.keys(soundObjects).filter(key => 
-            key.includes('_') && !validSounds.some(({ midiNote }) => 
-              key === `${currentInstrument}_${midiNote}`
-            )
-          );
-          
-          for (const key of previousSounds) {
-            const sound = soundObjects[key];
-            if (sound) {
-              try {
-                const status = await sound.getStatusAsync();
-                if (status.isLoaded && status.isPlaying) {
-                  await sound.stopAsync();
-                  await sound.unloadAsync();
-                }
-                delete soundObjects[key];
-              } catch (error) {
-                handleAudioError(error);
-              }
-            }
-          }
-        }, 50);
-      } catch (error) {
-        handleAudioError(error);
+      isCurrentlyPlaying = true;
+      return true;
+    } else {
+      // Mobile implementation
+      const soundFile = {
+        balafon: BALAFON,
+        piano: PIANO,
+        rhodes: RHODES,
+        pluck: PLUCK,
+        pad: PAD,
+        steel_drum: STEEL_DRUM
+      }[currentInstrument];
+
+      if (!soundFile) {
+        throw new Error(`No sound file found for instrument ${currentInstrument}`);
       }
+
+      // Create a new sound instance for each note in the chord
+      const playPromises = midiNotes.map(async (midiNote, index) => {
+        try {
+          const { sound } = await Audio.Sound.createAsync(
+            soundFile,
+            { 
+              shouldPlay: false,
+              volume: currentSustain / 100,
+              rate: Math.pow(2, (midiNote - 60) / 12),
+              shouldCorrectPitch: true,
+              progressUpdateIntervalMillis: 50
+            }
+          );
+
+          // Store with unique key
+          const noteKey = `${currentInstrument}_${midiNote}_${Date.now()}`;
+          soundObjects[noteKey] = sound;
+
+          // Set position based on sample start
+          await sound.setPositionAsync(currentSampleStart);
+
+          // Apply flam delay if enabled
+          const flamDelay = getFlamDelay(currentFlamValue, currentBpm);
+          await new Promise(resolve => setTimeout(resolve, index * flamDelay));
+
+          // Play the sound
+          await sound.playAsync();
+
+          // Cleanup after playback
+          setTimeout(async () => {
+            try {
+              if (soundObjects[noteKey]) {
+                const status = await soundObjects[noteKey]?.getStatusAsync();
+                if (status?.isLoaded) {
+                  await soundObjects[noteKey]?.stopAsync();
+                  await soundObjects[noteKey]?.unloadAsync();
+                }
+                delete soundObjects[noteKey];
+              }
+            } catch (e) {
+              console.warn(`Cleanup error for note ${midiNote}:`, e);
+            }
+          }, 2000);
+
+        } catch (error) {
+          console.error(`Error playing note ${midiNote}:`, error);
+        }
+      });
+
+      await Promise.all(playPromises);
+      isCurrentlyPlaying = true;
+      return true;
     }
   } catch (error) {
-    handleAudioError(error);
+    console.error('Error playing chord:', error);
+    await cleanup(); // Attempt to clean up on error
+    return false;
   }
 };
 
@@ -579,50 +743,110 @@ export const stopChord = async () => {
   }
 };
 
-// Set the instrument type
-export const setInstrument = (instrument: InstrumentType) => {
-  currentInstrument = instrument;
+// Utility function to ensure sounds are loaded
+const ensureSoundsLoaded = async () => {
+  try {
+    if (!isAudioInitialized || Object.keys(soundObjects).length === 0) {
+      logDebug('Sounds not initialized, initializing now...');
+      await initAudio();
+    }
+    return true;
+  } catch (e) {
+    console.error('Error ensuring sounds are loaded:', e);
+    return false;
+  }
 };
 
-// Get the current instrument
-export const getInstrument = () => {
+// Set the instrument type with validation
+export const setInstrument = async (instrument: InstrumentType) => {
+  try {
+    await ensureSoundsLoaded();
+    currentInstrument = instrument;
+    
+    // If the instrument sound isn't loaded, load it
+    if (!soundObjects[instrument]) {
+      const soundFile = {
+        balafon: BALAFON,
+        piano: PIANO,
+        rhodes: RHODES,
+        pluck: PLUCK,
+        pad: PAD,
+        steel_drum: STEEL_DRUM
+      }[instrument];
+
+      if (soundFile) {
+        const { sound } = await Audio.Sound.createAsync(
+          soundFile,
+          { 
+            shouldPlay: false,
+            volume: 1.0,
+            progressUpdateIntervalMillis: 50
+          }
+        );
+        soundObjects[instrument] = sound;
+      }
+    }
+  } catch (e) {
+    console.error('Error setting instrument:', e);
+    // Fall back to piano if there's an error
+    currentInstrument = 'piano';
+  }
+};
+
+// Get the current instrument with validation
+export const getInstrument = async () => {
+  await ensureSoundsLoaded();
   return currentInstrument;
 };
 
-// Set the flam value
-export const setFlamValue = (flamValue: FlamValue) => {
-  logDebug('Setting flam value to:', flamValue);
-  currentFlamValue = flamValue;
+// Set the flam value with validation
+export const setFlamValue = async (flamValue: FlamValue) => {
+  try {
+    await ensureSoundsLoaded();
+    logDebug('Setting flam value to:', flamValue);
+    currentFlamValue = flamValue;
+  } catch (e) {
+    console.error('Error setting flam value:', e);
+    currentFlamValue = 'off'; // Fall back to off if there's an error
+  }
 };
 
-// Get the current flam value
-export const getFlamValue = () => {
+// Get the current flam value with validation
+export const getFlamValue = async () => {
+  await ensureSoundsLoaded();
   return currentFlamValue;
 };
 
-// Set the current BPM
-export const setBpm = (bpm: number) => {
-  currentBpm = bpm;
+// Set the current BPM with validation
+export const setBpm = async (bpm: number) => {
+  try {
+    await ensureSoundsLoaded();
+    currentBpm = bpm;
+  } catch (e) {
+    console.error('Error setting BPM:', e);
+    currentBpm = 120; // Fall back to default BPM if there's an error
+  }
 };
 
-// Get the current BPM
-export const getBpm = () => {
+// Get the current BPM with validation
+export const getBpm = async () => {
+  await ensureSoundsLoaded();
   return currentBpm;
 };
 
-// Function to get flam delay in milliseconds
-function getFlamDelay(flamValue: FlamValue): number {
+// Function to get flam delay in milliseconds, now linked to BPM
+function getFlamDelay(flamValue: FlamValue, bpm: number): number {
+  // 1 quarter note = 60000 / bpm ms
+  // 1 whole note = 4 * quarter note
+  const quarterMs = 60000 / bpm;
+  const wholeMs = quarterMs * 4;
   switch (flamValue) {
-    case '1/8':
-      return 62.5; // Medium flam
-    case '1/16':
-      return 31.25; // Fast flam
-    case '1/32':
-      return 15.625; // Fastest flam
+    case '1/48': return (wholeMs / 48) * 2;   // half-time
+    case '1/32': return (wholeMs / 32) * 2;   // half-time
+    case '1/24': return (wholeMs / 24) * 2;   // half-time
+    case '1/16': return (wholeMs / 16) * 2;   // half-time
     case 'off':
-      return 0; // No flam at all
-    default:
-      return 0; // Default to no flam
+    default: return 0;
   }
 }
 
@@ -761,37 +985,6 @@ export const playClick = async (step?: number) => {
   }
 };
 
-// Clean up resources
-export const cleanup = async (): Promise<void> => {
-  try {
-    // Stop all playing sounds first
-    await stopAllSounds();
-    
-    // Unload all sounds with proper error handling
-    await Promise.all(
-      Object.entries(soundObjects).map(async ([key, sound]) => {
-        if (sound) {
-          try {
-            await sound.unloadAsync();
-          } catch (e) {
-            console.error(`Error unloading sound ${key}:`, e);
-          }
-        }
-      })
-    );
-    
-    // Reset state
-    soundObjects = {};
-    isAudioInitialized = false;
-    currentInstrument = 'balafon';
-    currentFlamValue = 'off';
-    currentBpm = 120;
-    
-  } catch (e) {
-    console.error('Error during cleanup:', e);
-  }
-};
-
 // Test click sounds
 export const testClickSounds = async () => {
   try {
@@ -853,4 +1046,54 @@ export const testSingleClick = async (number: 1 | 2 | 3 | 4) => {
     console.error('Error testing click sound:', error);
     return false;
   }
+};
+
+// Set EQ band levels
+export const setEqBand = async (band: 'low' | 'mid' | 'high', value: number) => {
+  try {
+    if (!audioContext) await initAudio();
+    
+    const gain = Math.max(-12, Math.min(12, value)); // Ensure gain is within bounds
+    logDebug(`Setting ${band} EQ to ${gain}dB`);
+
+    if (Platform.OS === 'web') {
+      switch (band) {
+        case 'low':
+          if (lowEQ) {
+            lowEQ.gain.value = gain;
+            logDebug('Low EQ updated');
+          }
+          break;
+        case 'mid':
+          if (midEQ) {
+            midEQ.gain.value = gain;
+            logDebug('Mid EQ updated');
+          }
+          break;
+        case 'high':
+          if (highEQ) {
+            highEQ.gain.value = gain;
+            logDebug('High EQ updated');
+          }
+          break;
+      }
+    } else {
+      // For mobile, we'll apply EQ changes when playing sounds
+      logDebug('EQ changes will be applied on next playback');
+    }
+  } catch (error) {
+    console.error(`Error setting ${band} EQ:`, error);
+  }
+};
+
+// Set sample start time
+export const setSampleStart = async (value: number) => {
+  currentSampleStart = Math.max(0, Math.min(500, value));
+  logDebug(`Sample start set to ${currentSampleStart}ms`);
+};
+
+// Set sustain level
+export const setSustain = async (value: number) => {
+  currentSustain = Math.max(10, Math.min(200, value));
+  logDebug(`Sustain set to ${currentSustain}%`);
 };

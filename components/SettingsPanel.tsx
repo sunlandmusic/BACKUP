@@ -81,15 +81,16 @@ export function SettingsPanel({
           }
         }}
       >
-        <Text style={styles.settingLabel}>{label}</Text>
+        <Text style={[styles.settingLabel, { fontSize: 15 }]}>{label}</Text>
         {settingKey === 'mode' ? (
           renderModeWithAlternateName(value.toString())
         ) : (
           <Text style={[
             styles.settingValue,
+            { fontSize: 20 },
             isChord && [
               styles.chordValue,
-              { fontSize: getChordFontSize(value.toString()) }
+              { fontSize: 20 }
             ]
           ]}>
             {value}
@@ -144,13 +145,13 @@ const styles = StyleSheet.create({
   },
   settingLabel: {
     color: colors.textSecondary,
-    fontSize: 12,
+    fontSize: 13.8,
     fontWeight: '400',
     marginBottom: 2,
   },
   settingValue: {
     color: colors.text,
-    fontSize: 16,
+    fontSize: 18.4,
     fontWeight: '400',
   },
   chordValue: {
