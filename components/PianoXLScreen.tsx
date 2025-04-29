@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, SafeAreaView, Modal } from 'react-native';
-import { Eye, Save } from 'lucide-react-native';
+import { View, Text, StyleSheet, Pressable, SafeAreaView, Modal, TouchableOpacity, ImageBackground } from 'react-native';
+import { Eye, Save, Image as ImageIcon } from 'lucide-react-native';
 import { colors } from '@/constants/colors';
 import { NoteName, MusicMode, Chord, ChordType, InstrumentType } from '@/types/music';
 import { getScaleNotes, getDiatonicChords, createChord } from '@/utils/chord-utils';
@@ -8,6 +8,8 @@ import { useChordStore } from '@/stores/chord-store';
 import { playChord, stopChord } from '@/utils/audio-utils';
 import { NavigationMenu } from '@/components/NavigationMenu';
 import { usePathname, router } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface PianoXLProps {
   onNoteSelect?: (note: string) => void;
@@ -39,16 +41,11 @@ const MINOR_SCALE_CHORDS: { [key: string]: ChordType[] } = {
 
 const availableSounds: InstrumentType[] = ['balafon', 'piano', 'rhodes', 'steel_drum', 'pluck', 'pad'];
 const formatInstrumentName = (name: InstrumentType): string => {
-  switch (name) {
-    case 'balafon': return 'Balafon';
-    case 'piano': return 'Piano';
-    case 'rhodes': return 'Rhodes';
-    case 'steel_drum': return 'Steel Drum';
-    case 'pluck': return 'Pluck';
-    case 'pad': return 'Pad';
-    default: return name;
-  }
+  return name.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 };
+
+// Add type definition
+type SettingType = 'key' | 'mode' | 'octave' | 'inversion';
 
 export function PianoXL({ onNoteSelect }: PianoXLProps) {
   // State
@@ -56,7 +53,7 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
   const [mode, setMode] = useState<MusicMode>('minor');
   const [octave, setOctave] = useState(0);
   const [inversion, setInversion] = useState(0);
-  const [currentChord, setCurrentChord] = useState<string>('C#m7');
+  const [currentChord, setCurrentChord] = useState<Chord | null>(null);
   const [scaleNotes, setScaleNotes] = useState<NoteName[]>([]);
   const [selectedControl, setSelectedControl] = useState<string | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -68,6 +65,9 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
   const { setCurrentChord: setStoreChord, savedChords, saveChord } = useChordStore();
   const [selectedSound, setSelectedSound] = useState<InstrumentType>('balafon');
   const [isSoundWindowSelected, setIsSoundWindowSelected] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
+  const [isSlotSelectionActive, setIsSlotSelectionActive] = useState(false);
+  const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
   
   // Update scale notes when key or mode changes
   useEffect(() => {
@@ -132,104 +132,134 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
   const handleKeyPress = (note: string) => {
     if (!scaleNotes.includes(note as NoteName)) return;
     
-    // Deselect any selected setting when a key is pressed
-    setSelectedControl(null);
-    
     setLastPressedNote(note as NoteName);
     const chordType = getCurrentChordType(note as NoteName);
     const chord = createChord(note as NoteName, chordType);
     
     if (chord) {
       try {
-        playChord(chord.notes);
+        // Apply octave and inversion if they are set
+        const modifiedNotes = chord.notes.map(note => {
+          let modifiedNote = note;
+          if (octave !== 0) {
+            modifiedNote += 12 * octave;
+          }
+          return modifiedNote;
+        });
+
+        // Apply inversion if set
+        if (inversion !== 0) {
+          for (let i = 0; i < Math.abs(inversion); i++) {
+            if (inversion > 0) {
+              // Move the lowest note up an octave
+              modifiedNotes[0] += 12;
+              modifiedNotes.push(modifiedNotes.shift()!);
+            } else {
+              // Move the highest note down an octave
+              modifiedNotes[modifiedNotes.length - 1] -= 12;
+              modifiedNotes.unshift(modifiedNotes.pop()!);
+            }
+          }
+        }
+
+        playChord(modifiedNotes, selectedSound);
+        const modifiedChord = { ...chord, notes: modifiedNotes };
+        setStoreChord(modifiedChord);
+        setCurrentChord(modifiedChord);
       } catch (error) {
         // Silently catch AVFoundation errors
       }
-      setStoreChord(chord);
-      setCurrentChord(getChordName(note as NoteName));
       onNoteSelect?.(note);
     }
   };
 
   // Handle setting selection
-  const handleSettingSelect = (setting: string) => {
-    setSelectedControl(prev => prev === setting ? null : setting);
+  const handleSettingSelect = (setting: SettingType) => {
+    setSelectedControl(selectedControl === setting ? null : setting);
   };
 
   // Handle value adjustments with limits
   const handleAdjustValue = (direction: 'up' | 'down') => {
-    // If a setting is selected, handle setting adjustments
+    console.log('Adjusting value:', direction, 'Selected control:', selectedControl);
+
+    // If sound window is selected, handle sound selection
+    if (isSoundWindowSelected) {
+      const currentIndex = availableSounds.indexOf(selectedSound);
+      const newIndex = direction === 'up' ? 
+        (currentIndex + 1) % availableSounds.length :
+        (currentIndex - 1 + availableSounds.length) % availableSounds.length;
+      setSelectedSound(availableSounds[newIndex]);
+        return;
+      }
+
+    // If save confirmation is visible and slot selection is active
+    if (showSaveConfirm && isSlotSelectionActive && selectedSlot !== null) {
+      const emptySlots = findEmptySlots();
+      const currentIndex = emptySlots.indexOf(selectedSlot);
+      const newIndex = direction === 'up' ?
+        (currentIndex + 1) % emptySlots.length :
+        (currentIndex - 1 + emptySlots.length) % emptySlots.length;
+      setSelectedSlot(emptySlots[newIndex]);
+        return;
+      }
+
+    // Handle setting adjustments
     if (selectedControl) {
-      if (selectedControl === 'key') {
-        const currentKeyIndex = KEYS.indexOf(selectedKey as NoteName);
-        if (direction === 'up') {
-          const nextKey = KEYS[(currentKeyIndex + 1) % KEYS.length];
-          setSelectedKey(nextKey);
-        } else {
-          const prevKey = KEYS[(currentKeyIndex - 1 + KEYS.length) % KEYS.length];
-          setSelectedKey(prevKey);
-        }
-        return;
-      }
-
-      if (selectedControl === 'mode') {
-        const currentModeIndex = MODES.indexOf(mode);
-        if (direction === 'up') {
-          setMode(MODES[(currentModeIndex + 1) % MODES.length]);
-        } else {
-          setMode(MODES[(currentModeIndex - 1 + MODES.length) % MODES.length]);
-        }
-        return;
-      }
-
-      // Handle remaining controls
+      console.log('Adjusting setting:', selectedControl);
       switch (selectedControl) {
-        case 'octave':
-          if (direction === 'up') {
-            setOctave(prev => prev < 3 ? prev + 1 : prev);
-          } else {
-            setOctave(prev => prev > -3 ? prev - 1 : prev);
-          }
+        case 'key':
+          const currentKeyIndex = KEYS.indexOf(selectedKey);
+          const newKeyIndex = direction === 'up' ?
+            (currentKeyIndex + 1) % KEYS.length :
+            (currentKeyIndex - 1 + KEYS.length) % KEYS.length;
+          setSelectedKey(KEYS[newKeyIndex]);
           break;
+
+        case 'mode':
+          const currentModeIndex = MODES.indexOf(mode);
+          const newModeIndex = direction === 'up' ?
+            (currentModeIndex + 1) % MODES.length :
+            (currentModeIndex - 1 + MODES.length) % MODES.length;
+          setMode(MODES[newModeIndex]);
+          break;
+
+        case 'octave':
+          setOctave(prev => {
+            const newValue = direction === 'up' ? prev + 1 : prev - 1;
+            return Math.max(-3, Math.min(3, newValue));
+          });
+          break;
+
         case 'inversion':
-          if (direction === 'up') {
-            setInversion(prev => prev < 2 ? prev + 1 : prev);
-          } else {
-            setInversion(prev => prev > -2 ? prev - 1 : prev);
-          }
+          setInversion(prev => {
+            const newValue = direction === 'up' ? prev + 1 : prev - 1;
+            return Math.max(-2, Math.min(2, newValue));
+          });
           break;
       }
       return;
     }
 
-    // If no setting is selected and we have a last pressed note, handle chord type scrolling
+    // Handle chord type cycling when no setting is selected
     if (lastPressedNote && scaleNotes.includes(lastPressedNote)) {
       const availableTypes = getAvailableChordTypes(lastPressedNote);
+      if (availableTypes.length === 0) return;
+      
       const currentIndex = chordTypeIndices[lastPressedNote] || 0;
-      let newIndex;
-
-      if (direction === 'up') {
-        newIndex = (currentIndex + 1) % availableTypes.length;
-      } else {
-        newIndex = (currentIndex - 1 + availableTypes.length) % availableTypes.length;
-      }
+      const newIndex = direction === 'up' ?
+        (currentIndex + 1) % availableTypes.length :
+        (currentIndex - 1 + availableTypes.length) % availableTypes.length;
 
       setChordTypeIndices(prev => ({
         ...prev,
         [lastPressedNote]: newIndex
       }));
 
-      // Play the new chord
       const newChordType = availableTypes[newIndex];
       const newChord = createChord(lastPressedNote, newChordType);
       if (newChord) {
-        try {
-          playChord(newChord.notes);
-        } catch (error) {
-          // Silently catch AVFoundation errors
-        }
         setStoreChord(newChord);
-        setCurrentChord(getChordName(lastPressedNote));
+        setCurrentChord(newChord);
       }
     }
   };
@@ -248,28 +278,38 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
   // Add helper function for mode display
   const renderModeWithAlternateName = (mode: string) => {
     const upperMode = mode.toUpperCase();
+    let mainText = '';
     let alternateName = '';
     
     switch (upperMode) {
-      case 'MAJOR': alternateName = 'IONIAN'; break;
-      case 'MINOR': alternateName = 'AEOLIAN'; break;
-      case 'DORIAN': alternateName = '2ND MODE'; break;
-      case 'PHRYGIAN': alternateName = '3RD MODE'; break;
-      case 'LYDIAN': alternateName = '4TH MODE'; break;
+      case 'OFF': 
+        mainText = '';  // Remove MODE from here since it's handled by the label
+        alternateName = 'OFF';
+        break;
+      case 'MAJOR': 
+        mainText = 'MAJOR';
+        alternateName = 'IONIAN';
+        break;
+      case 'MINOR': 
+        mainText = 'MINOR';
+        alternateName = 'AEOLIAN';
+        break;
       case 'MIXOLYDIAN': 
-        return (
-          <View style={styles.modeValueContainer}>
-            <Text style={styles.settingValue}>MIXO</Text>
-            <Text style={styles.alternateModeName}>LYDIAN</Text>
-          </View>
-        );
-      case 'LOCRIAN': alternateName = '7TH MODE'; break;
-      default: break;
+        mainText = 'MIXO';
+        alternateName = 'LYDIAN';
+        break;
+      case 'PHRYGIAN':
+        mainText = 'PHRYG';
+        alternateName = 'IAN';
+        break;
+      default: 
+        mainText = upperMode;
+        break;
     }
 
     return (
       <View style={styles.modeValueContainer}>
-        <Text style={styles.settingValue}>{upperMode}</Text>
+        {mainText && <Text style={styles.settingValue}>{mainText}</Text>}
         {alternateName && (
           <Text style={styles.alternateModeName}>{alternateName}</Text>
         )}
@@ -283,12 +323,21 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
     value: string | number; 
     isSelected?: boolean;
     onPress?: () => void;
-  }) => (
+  }) => {
+    const settingType = label.toLowerCase() as SettingType;
+    
+    return (
     <Pressable 
-      style={[styles.settingItem, isSelected && styles.selectedSetting]}
+        style={[
+          styles.settingItem,
+          label === 'MODE' && styles.modeSettingItem,
+          isSelected && styles.selectedSetting
+        ]}
       onPress={onPress}
     >
+        {(label !== 'MODE' || value.toString().toUpperCase() === 'OFF') && (
       <Text style={styles.settingLabel}>{label}</Text>
+        )}
       {label === 'MODE' ? (
         renderModeWithAlternateName(value.toString())
       ) : (
@@ -299,6 +348,7 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
       )}
     </Pressable>
   );
+  };
 
   // Piano key component with chord name
   const PianoKey = ({ isWhite = true, note }: { isWhite?: boolean; note: string }) => {
@@ -312,7 +362,11 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
           isWhite ? styles.whiteKey : styles.blackKey,
           isInScale && styles.keyInScale
         ]}
-        onPress={() => handleKeyPress(note)}
+        onPressIn={() => handleKeyPress(note)}
+        onPressOut={() => {
+          stopChord();
+          setCurrentChord(null);
+        }}
       >
         <View style={styles.keyContent}>
           {isInScale && (
@@ -328,74 +382,52 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
     );
   };
 
-  // Find next empty slot
-  const findNextEmptySlot = () => {
-    for (let i = 0; i < 32; i++) {  // MAX_SAVED_CHORDS is 32
+  // Find next empty slot and all available empty slots
+  const findEmptySlots = () => {
+    const emptySlots: number[] = [];
+    for (let i = 0; i < 32; i++) {
       if (!savedChords[i]) {
-        return i;
+        emptySlots.push(i);
       }
     }
-    return null;
+    return emptySlots;
+  };
+
+  // Handle slot selection
+  const handleSlotSelect = () => {
+    setIsSlotSelectionActive(!isSlotSelectionActive);
   };
 
   // Handle save button press
   const handleSavePress = () => {
-    console.log('Save button pressed');
-    console.log('Last pressed note:', lastPressedNote);
-    
     if (!lastPressedNote) {
-      console.log('No chord to save - no last pressed note');
       return;
     }
     
-    const emptyIndex = findNextEmptySlot();
-    console.log('Next empty slot:', emptyIndex);
-    
-    if (emptyIndex === null) {
-      console.log('No empty slots available');
+    const emptySlots = findEmptySlots();
+    if (emptySlots.length === 0) {
       return;
     }
     
-    const chordType = getCurrentChordType(lastPressedNote);
-    const chord = createChord(lastPressedNote, chordType);
-    
-    if (chord) {
-      setNextEmptyIndex(emptyIndex);
+    setSelectedSlot(emptySlots[0]);
       setShowSaveConfirm(true);
-    }
   };
 
   // Handle save confirmation
   const handleSaveConfirm = () => {
-    console.log('Save confirmed');
-    console.log('Saving to index:', nextEmptyIndex);
-    console.log('Last pressed note:', lastPressedNote);
-    
-    if (nextEmptyIndex === null || !lastPressedNote) {
-      console.log('Cannot save - missing data');
+    if (selectedSlot === null || !lastPressedNote) {
       return;
     }
 
     const chordType = getCurrentChordType(lastPressedNote);
-    console.log('Chord type:', chordType);
-    
     const chord = createChord(lastPressedNote, chordType);
-    console.log('Created chord:', chord);
     
     if (chord) {
-      // Save to chord store
-      saveChord(chord, nextEmptyIndex);
-      console.log('Saved chord to store at index:', nextEmptyIndex);
-      
-      // Play the chord when saved
-      try {
-        playChord(chord.notes);
-      } catch (error) {
-        // Silently catch AVFoundation errors
-      }
+      saveChord(chord, selectedSlot);
     }
     
     setShowSaveConfirm(false);
+    setIsSlotSelectionActive(false);
   };
 
   // Add useEffect to monitor savedChords changes
@@ -403,82 +435,101 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
     console.log('Current saved chords:', savedChords);
   }, [savedChords]);
 
-  const handleSoundSelect = () => {
-    setIsSoundWindowSelected(true);
-    // Cycle through available sounds
+  const cycleInstrument = () => {
     const currentIndex = availableSounds.indexOf(selectedSound);
-    const newIndex = (currentIndex + 1) % availableSounds.length;
-    setSelectedSound(availableSounds[newIndex]);
+    const nextSound = availableSounds[(currentIndex + 1) % availableSounds.length];
+    setSelectedSound(nextSound);
+  };
+
+  // Add a helper function to get the full chord name
+  const getFullChordName = (chord: Chord | null): string => {
+    if (!chord) return '';
+    return getChordName(chord.root);
+  };
+
+  // Load saved background on mount
+  useEffect(() => {
+    loadSavedBackground();
+  }, []);
+
+  const loadSavedBackground = async () => {
+    try {
+      const savedImage = await AsyncStorage.getItem('pianoXLBackground');
+      if (savedImage) {
+        setBackgroundImage(savedImage);
+      }
+    } catch (error) {
+      console.log('Error loading background:', error);
+    }
+  };
+
+  const handleSelectBackground = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 1,
+        allowsEditing: true,
+        aspect: [21, 9],
+      });
+
+      if (!result.canceled && result.assets[0].uri) {
+        const uri = result.assets[0].uri;
+        setBackgroundImage(uri);
+        await AsyncStorage.setItem('pianoXLBackground', uri);
+      }
+    } catch (error) {
+      console.log('Error selecting background:', error);
+    }
+  };
+
+  const handleRemoveBackground = async () => {
+    setBackgroundImage(null);
+    await AsyncStorage.removeItem('pianoXLBackground');
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.contentOverlay}>
       {/* Eye button */}
       <Pressable style={styles.eyeButton} onPress={toggleMenu}>
         <Eye size={28} color={colors.text} />
       </Pressable>
 
-      {/* Instrument (Sound) selection window */}
+        {/* Skin button */}
       <Pressable 
-        style={[styles.soundWindow, isSoundWindowSelected && styles.soundWindowSelected]}
-        onPress={handleSoundSelect}
-      >
-        <Text style={styles.soundText}>{formatInstrumentName(selectedSound)}</Text>
-      </Pressable>
+          style={styles.skinButton} 
+          onPress={handleSelectBackground}
+          onLongPress={handleRemoveBackground}
+        >
+          <ImageIcon size={20} color={colors.text} />
+        </Pressable>
 
-      {/* Save to Next Empty button */}
-      <Pressable 
-        style={styles.saveButton}
-        onPress={() => {
-          console.log('Save button pressed - direct');
-          handleSavePress();
-        }}
-      >
-        <Text style={styles.saveButtonText}>SAVE CHORD</Text>
-      </Pressable>
-
-      {/* Save Confirmation Modal */}
-      <Modal
-        visible={showSaveConfirm}
-        transparent={true}
-        animationType="fade"
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Save Chord</Text>
-            <Text style={styles.modalText}>
-              Save {lastPressedNote ? getChordName(lastPressedNote) : ''} to slot {nextEmptyIndex !== null ? nextEmptyIndex + 1 : ''}?
-            </Text>
-            <View style={styles.modalButtons}>
-              <Pressable
-                style={[styles.modalButton, styles.modalButtonNo]}
-                onPress={() => {
-                  console.log('Save cancelled');
-                  setShowSaveConfirm(false);
-                }}
-              >
-                <Text style={styles.modalButtonText}>NO</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.modalButton, styles.modalButtonYes]}
-                onPress={() => {
-                  console.log('Save confirmed - direct');
-                  handleSaveConfirm();
-                }}
-              >
-                <Text style={styles.modalButtonText}>YES</Text>
-              </Pressable>
-            </View>
+        {/* Save button */}
+        <Pressable style={styles.saveButton} onPress={handleSavePress}>
+          <View style={styles.saveButtonTextContainer}>
+            <Text style={styles.saveButtonText}>SAVE</Text>
+            <Text style={styles.saveButtonText}>CHORD</Text>
           </View>
-        </View>
-      </Modal>
+      </Pressable>
 
-      {/* Navigation Menu */}
-      <NavigationMenu 
-        visible={menuVisible} 
-        onClose={() => setMenuVisible(false)} 
-        currentRoute={pathname}
-      />
+      {/* Sound selection window */}
+      <Pressable 
+        style={[
+          styles.soundWindow,
+          isSoundWindowSelected && styles.soundWindowSelected
+        ]}
+          onPress={cycleInstrument}
+      >
+          <Text style={styles.soundText}>{formatInstrumentName(selectedSound).toUpperCase()}</Text>
+      </Pressable>
+
+        {backgroundImage && (
+          <ImageBackground 
+            source={{ uri: backgroundImage }} 
+            style={styles.backgroundImage}
+            resizeMode="cover"
+          />
+        )}
 
       <View style={styles.mainContent}>
         {/* Piano Keys */}
@@ -523,7 +574,8 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
           />
           <View style={styles.chordDisplay}>
             <Text style={styles.chordLabel}>CHORD</Text>
-            <Text style={styles.chordValue}>{currentChord}</Text>
+              <Text style={styles.chordValue}>{getFullChordName(currentChord)}</Text>
+            </View>
           </View>
         </View>
       </View>
@@ -543,7 +595,62 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
           <Text style={styles.plusMinusText}>-</Text>
         </Pressable>
       </View>
+
+      {/* Navigation Menu */}
+      <NavigationMenu 
+        visible={menuVisible} 
+        onClose={() => setMenuVisible(false)} 
+        currentRoute={pathname}
+      />
+
+      {/* Save Confirmation Modal */}
+      <Modal
+        visible={showSaveConfirm}
+        transparent={true}
+        animationType="fade"
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Save Chord</Text>
+            <Text style={styles.modalText}>
+              Save {lastPressedNote ? getChordName(lastPressedNote) : ''} to
+            </Text>
+            <Pressable
+              onPress={handleSlotSelect}
+              style={[
+                styles.slotSelector,
+                isSlotSelectionActive && styles.slotSelectorActive
+              ]}
+            >
+              <Text style={[
+                styles.modalText,
+                isSlotSelectionActive && styles.modalTextHighlighted
+              ]}>
+                SLOT {selectedSlot !== null ? selectedSlot + 1 : ''}
+              </Text>
+            </Pressable>
+            <Text style={styles.modalText}>?</Text>
+            <View style={styles.modalButtons}>
+              <Pressable
+                style={[styles.modalButton, styles.modalButtonNo]}
+                onPress={() => {
+                  setShowSaveConfirm(false);
+                  setIsSlotSelectionActive(false);
+                }}
+              >
+                <Text style={styles.modalButtonText}>NO</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalButton, styles.modalButtonYes]}
+                onPress={handleSaveConfirm}
+              >
+                <Text style={styles.modalButtonText}>YES</Text>
+              </Pressable>
     </View>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
@@ -551,11 +658,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  mainContent: {
-    flex: 1,
-    paddingHorizontal: 20,
-    marginLeft: -50,
+    overflow: 'hidden',
+    position: 'relative',
+    width: '100%',
   },
   eyeButton: {
     position: 'absolute',
@@ -569,52 +674,114 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 10,
   },
+  saveButton: {
+    position: 'absolute',
+    top: 30,
+    left: 120,
+    width: 79,
+    height: 50,
+    borderRadius: 15,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  saveButtonTextContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveButtonText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 14,
+  },
+  soundWindow: {
+    position: 'absolute',
+    left: 217,
+    top: 30,
+    width: 132,
+    height: 50,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 5,
+  },
+  soundWindowSelected: {
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderWidth: 2,
+  },
+  soundText: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+  },
   settingsPanel: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-start',
     marginBottom: 10,
     paddingHorizontal: 5,
     height: 67,
     alignItems: 'center',
     position: 'absolute',
     top: 20,
-    right: 20,
-    left: -59,
-    backgroundColor: colors.background,
+    left: 310,
+    width: 'auto',
     zIndex: 3,
-    transform: [{ translateX: -50 }],
   },
   settingItem: {
     alignItems: 'center',
     padding: 5,
-    borderRadius: 4,
+    borderRadius: 15,
     justifyContent: 'center',
     marginLeft: 15,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  modeSettingItem: {
+    width: 102,
+    minWidth: 0,
+    padding: 2,
+    margin: 0,
+    height: 67,
   },
   selectedSetting: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderColor: 'rgba(255, 255, 255, 0.8)',
+    borderWidth: 1,
   },
   settingLabel: {
     color: colors.textSecondary,
-    fontSize: 12,
+    fontSize: 13.8,
     fontWeight: '400',
     marginBottom: 2,
   },
   settingValue: {
     color: colors.text,
-    fontSize: 16,
+    fontSize: 18.4,
     fontWeight: '400',
   },
   chordDisplay: {
     alignItems: 'center',
     padding: 5,
-    borderRadius: 4,
+    borderRadius: 15,
     marginLeft: 15,
-    width: 120,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    height: 67,
+    justifyContent: 'center',
+    width: 102,
   },
   chordLabel: {
     color: colors.textSecondary,
-    fontSize: 12,
+    fontSize: 13.8,
     fontWeight: '400',
     marginBottom: 2,
   },
@@ -628,6 +795,9 @@ const styles = StyleSheet.create({
     flex: 1,
     position: 'relative',
     marginTop: 220,
+    width: '100%',
+    alignItems: 'center',
+    transform: [{ translateX: -35 }],
   },
   whiteKeysRow: {
     flexDirection: 'row',
@@ -635,6 +805,8 @@ const styles = StyleSheet.create({
     height: '100%',
     zIndex: 1,
     paddingHorizontal: 20,
+    width: '100%',
+    maxWidth: 800,
   },
   blackKeysRow: {
     position: 'absolute',
@@ -645,6 +817,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     height: '60%',
     zIndex: 2,
+    width: '100%',
+    maxWidth: 800,
   },
   pianoKey: {
     borderRadius: 15,
@@ -689,26 +863,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderLeftWidth: 1,
     borderLeftColor: colors.border,
-    backgroundColor: colors.background,
-    zIndex: 5,
+    backgroundColor: 'transparent',
+    zIndex: 1000,
   },
   plusButton: {
     width: 40,
     height: 140,
     borderRadius: 8,
-    backgroundColor: colors.buttonGrey,
+    backgroundColor: 'rgba(58, 58, 60, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 10,
+    zIndex: 1001,
   },
   minusButton: {
     width: 40,
     height: 140,
     borderRadius: 8,
-    backgroundColor: colors.buttonGrey,
+    backgroundColor: 'rgba(58, 58, 60, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 10,
+    zIndex: 1001,
   },
   plusMinusText: {
     color: colors.textOffWhite,
@@ -718,8 +894,9 @@ const styles = StyleSheet.create({
   modeValueContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 0,
+    padding: 2,
     margin: 0,
+    width: '100%',
   },
   alternateModeName: {
     color: colors.textSecondary,
@@ -743,25 +920,10 @@ const styles = StyleSheet.create({
   blackKeyText: {
     color: colors.text,
   },
-  saveButton: {
-    position: 'absolute',
-    top: 30,
-    left: 125,
-    width: 119,
-    height: 50,
-    borderRadius: 15,
-    backgroundColor: '#000000',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 10,
-    borderWidth: 1,
-    borderColor: '#4A4A4A',
-  },
-  saveButtonText: {
+  buttonText: {
     color: colors.text,
-    fontSize: 12,
+    fontSize: 16,
     fontWeight: '500',
-    textAlign: 'center',
   },
   modalOverlay: {
     flex: 1,
@@ -777,23 +939,38 @@ const styles = StyleSheet.create({
     maxWidth: 300,
     borderWidth: 1,
     borderColor: colors.border,
+    alignItems: 'center',
   },
   modalTitle: {
     color: colors.text,
     fontSize: 20,
     fontWeight: '600',
-    marginBottom: 10,
+    marginBottom: 20,
     textAlign: 'center',
   },
   modalText: {
     color: colors.text,
     fontSize: 16,
-    marginBottom: 20,
+    marginBottom: 10,
     textAlign: 'center',
+  },
+  modalTextHighlighted: {
+    color: colors.primary,
+  },
+  slotSelector: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 4,
+    marginVertical: 10,
+  },
+  slotSelectorActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   modalButtons: {
     flexDirection: 'row',
     justifyContent: 'space-around',
+    marginTop: 20,
+    width: '100%',
   },
   modalButton: {
     paddingVertical: 10,
@@ -815,26 +992,43 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  soundWindow: {
+  mainContent: {
+    flex: 1,
+    position: 'relative',
+    width: '100%',
+    paddingRight: 40,
+    marginLeft: 40,
+  },
+  backgroundImage: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
+  },
+  contentOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.98)',
+    position: 'absolute',
+    left: 0,
+    right: -150,
+    top: 0,
+    bottom: -30,
+    width: '115%',
+    height: '105%',
+  },
+  skinButton: {
     position: 'absolute',
     top: 30,
-    left: 125,
-    width: 119,
-    height: 50,
-    borderRadius: 15,
-    backgroundColor: '#000000',
+    left: 60,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
-    borderWidth: 1,
-    borderColor: '#4A4A4A',
-  },
-  soundWindowSelected: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  soundText: {
-    color: colors.text,
-    fontSize: 12,
-    fontWeight: '500',
   },
 }); 

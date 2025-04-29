@@ -564,11 +564,16 @@ export const stopNote = async (midiNote: number) => {
 };
 
 // Play a chord (multiple notes simultaneously)
-export const playChord = async (midiNotes: number[]) => {
+export const playChord = async (midiNotes: number[], instrument?: InstrumentType) => {
   try {
-    // Ensure audio is initialized
+    // First ensure audio is properly initialized
     if (!isAudioInitialized) {
       await initAudio();
+    }
+
+    // Set instrument if provided
+    if (instrument) {
+      await setInstrument(instrument);
     }
 
     // Stop any currently playing sounds
@@ -576,7 +581,10 @@ export const playChord = async (midiNotes: number[]) => {
 
     if (Platform.OS === 'web') {
       if (!audioContext || !gainNode || !lowEQ || !midEQ || !highEQ) {
-        throw new Error('Audio nodes not initialized');
+        await initAudio();
+        if (!audioContext || !gainNode || !lowEQ || !midEQ || !highEQ) {
+          throw new Error('Audio nodes not initialized');
+        }
       }
 
       // Create and connect oscillators for each note
@@ -617,63 +625,56 @@ export const playChord = async (midiNotes: number[]) => {
       isCurrentlyPlaying = true;
       return true;
     } else {
-      // Mobile implementation
-      const soundFile = {
-        balafon: BALAFON,
-        piano: PIANO,
-        rhodes: RHODES,
-        pluck: PLUCK,
-        pad: PAD,
-        steel_drum: STEEL_DRUM
-      }[currentInstrument];
-
-      if (!soundFile) {
-        throw new Error(`No sound file found for instrument ${currentInstrument}`);
-      }
-
-      // Create a new sound instance for each note in the chord
+      // For mobile platforms, play each note individually
       const playPromises = midiNotes.map(async (midiNote, index) => {
         try {
-          const { sound } = await Audio.Sound.createAsync(
+          // Create a new sound instance for each note
+          const soundFile = {
+            balafon: BALAFON,
+            piano: PIANO,
+            rhodes: RHODES,
+            pluck: PLUCK,
+            pad: PAD,
+            steel_drum: STEEL_DRUM
+          }[currentInstrument];
+
+          if (!soundFile) {
+            throw new Error(`No sound file for instrument: ${currentInstrument}`);
+          }
+
+          const { sound: noteSound } = await Audio.Sound.createAsync(
             soundFile,
-            { 
+            {
               shouldPlay: false,
-              volume: currentSustain / 100,
+              volume: 1.0,
               rate: Math.pow(2, (midiNote - 60) / 12),
               shouldCorrectPitch: true,
               progressUpdateIntervalMillis: 50
             }
           );
 
-          // Store with unique key
+          // Store for cleanup
           const noteKey = `${currentInstrument}_${midiNote}_${Date.now()}`;
-          soundObjects[noteKey] = sound;
-
-          // Set position based on sample start
-          await sound.setPositionAsync(currentSampleStart);
+          soundObjects[noteKey] = noteSound;
 
           // Apply flam delay if enabled
           const flamDelay = getFlamDelay(currentFlamValue, currentBpm);
           await new Promise(resolve => setTimeout(resolve, index * flamDelay));
 
-          // Play the sound
-          await sound.playAsync();
+          // Play the note
+          await noteSound.playAsync();
 
-          // Cleanup after playback
+          // Cleanup after sound finishes
           setTimeout(async () => {
             try {
               if (soundObjects[noteKey]) {
-                const status = await soundObjects[noteKey]?.getStatusAsync();
-                if (status?.isLoaded) {
-                  await soundObjects[noteKey]?.stopAsync();
-                  await soundObjects[noteKey]?.unloadAsync();
-                }
+                await soundObjects[noteKey]?.unloadAsync();
                 delete soundObjects[noteKey];
               }
             } catch (e) {
               console.warn(`Cleanup error for note ${midiNote}:`, e);
             }
-          }, 2000);
+          }, currentSustain * 100);
 
         } catch (error) {
           console.error(`Error playing note ${midiNote}:`, error);
@@ -681,13 +682,14 @@ export const playChord = async (midiNotes: number[]) => {
       });
 
       await Promise.all(playPromises);
-      isCurrentlyPlaying = true;
       return true;
     }
-  } catch (error) {
-    console.error('Error playing chord:', error);
-    await cleanup(); // Attempt to clean up on error
-    return false;
+  } catch (error: any) {
+    console.error('Error in playChord:', error);
+    // Try to reinitialize audio system
+    await cleanup();
+    await initAudio();
+    throw error;
   }
 };
 

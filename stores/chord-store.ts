@@ -146,7 +146,7 @@ export const useChordStore = create<ChordState>()(
       setCurrentInstrument: async (instrument) => {
         try {
           await setInstrument(instrument);
-          set({ currentInstrument: instrument });
+        set({ currentInstrument: instrument });
         } catch (e) {
           console.error('Error setting instrument:', e);
           // Fall back to piano if there's an error
@@ -157,7 +157,7 @@ export const useChordStore = create<ChordState>()(
       setCurrentFlamValue: async (flamValue) => {
         try {
           await setFlamValue(flamValue);
-          set({ currentFlamValue: flamValue });
+        set({ currentFlamValue: flamValue });
         } catch (e) {
           console.error('Error setting flam value:', e);
           // Fall back to off if there's an error

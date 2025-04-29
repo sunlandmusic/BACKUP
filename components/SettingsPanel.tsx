@@ -25,25 +25,39 @@ export function SettingsPanel({
 }: SettingsPanelProps) {
   const renderModeWithAlternateName = (mode: string) => {
     const upperMode = mode.toUpperCase();
+    let mainText = '';
     let alternateName = '';
     
     // Handle modes with alternate names
     switch (upperMode) {
-      case 'MAJOR': alternateName = 'IONIAN'; break;
-      case 'MINOR': alternateName = 'AEOLIAN'; break;
+      case 'OFF': 
+        mainText = '';  // Remove MODE from here since it's handled by the label
+        alternateName = 'OFF';
+        break;
+      case 'MAJOR': 
+        mainText = 'MAJOR';
+        alternateName = 'IONIAN';
+        break;
+      case 'MINOR': 
+        mainText = 'MINOR';
+        alternateName = 'AEOLIAN';
+        break;
       case 'MIXOLYDIAN': 
-        return (
-          <View style={styles.modeValueContainer}>
-            <Text style={styles.settingValue}>MIXO</Text>
-            <Text style={styles.alternateModeName}>LYDIAN</Text>
-          </View>
-        );
-      default: break;
+        mainText = 'MIXO';
+        alternateName = 'LYDIAN';
+        break;
+      case 'PHRYGIAN':
+        mainText = 'PHRYG';
+        alternateName = 'IAN';
+        break;
+      default: 
+        mainText = upperMode;
+        break;
     }
 
     return (
       <View style={styles.modeValueContainer}>
-        <Text style={styles.settingValue}>{upperMode}</Text>
+        {mainText && <Text style={styles.settingValue}>{mainText}</Text>}
         {alternateName && (
           <Text style={styles.alternateModeName}>{alternateName}</Text>
         )}
@@ -60,10 +74,10 @@ export function SettingsPanel({
     // Add dynamic font size calculation for chord display
     const getChordFontSize = (chordName: string) => {
       const length = chordName.length;
-      if (length <= 5) return 28; // Default size for short names
+      if (length <= 5) return 28;
       if (length <= 7) return 24;
       if (length <= 9) return 20;
-      return 16; // Minimum size for very long names
+      return 16;
     };
 
     return (
@@ -81,7 +95,10 @@ export function SettingsPanel({
           }
         }}
       >
-        <Text style={[styles.settingLabel, { fontSize: 15 }]}>{label}</Text>
+        {/* Only show MODE label for mode setting when value is OFF */}
+        {(settingKey !== 'mode' || value.toString().toUpperCase() === 'OFF') && (
+          <Text style={[styles.settingLabel, { fontSize: 15 }]}>{label}</Text>
+        )}
         {settingKey === 'mode' ? (
           renderModeWithAlternateName(value.toString())
         ) : (

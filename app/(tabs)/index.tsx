@@ -729,6 +729,25 @@ export default function ChordComposeScreen() {
     setFlamValue(flamOptionToFlamValue(selectedFlam));
   }, [selectedFlam]);
 
+  // Update the cycleInstrument function
+  const cycleInstrument = () => {
+    const currentIndex = availableSounds.indexOf(selectedSound);
+    const nextIndex = (currentIndex + 1) % availableSounds.length;
+    const newInstrument = availableSounds[nextIndex];
+    setSelectedSound(newInstrument);
+    setCurrentInstrument(newInstrument);
+  };
+
+  // Update the cycleFlamOption function
+  const cycleFlamOption = () => {
+    const flamOptions: FlamOption[] = ['FLAM OFF', 'FAST', 'MED', 'SLOW'];
+    const currentIndex = flamOptions.indexOf(selectedFlam);
+    const nextIndex = (currentIndex + 1) % flamOptions.length;
+    const newFlam = flamOptions[nextIndex];
+    setSelectedFlam(newFlam);
+    setFlamValue(flamOptionToFlamValue(newFlam));
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
@@ -970,9 +989,9 @@ export default function ChordComposeScreen() {
           styles.soundWindow,
           isSoundWindowSelected && styles.soundWindowSelected
         ]}
-        onPress={handleSoundSelect}
+        onPress={cycleInstrument}
       >
-        <Text style={styles.soundText}>{formatInstrumentName(selectedSound)}</Text>
+        <Text style={styles.soundText}>{formatInstrumentName(selectedSound).toUpperCase()}</Text>
       </Pressable>
 
       {/* Add Flam button before the sound window */}
@@ -981,13 +1000,9 @@ export default function ChordComposeScreen() {
           styles.flamWindow,
           isFlamSelected && styles.flamWindowSelected
         ]}
-        onPress={handleFlamSelect}
+        onPress={cycleFlamOption}
       >
-        {selectedFlam === 'FLAM OFF' ? (
-          <Text style={styles.flamText}>FLAM</Text>
-        ) : (
-          <Text style={styles.flamText}>{selectedFlam}</Text>
-        )}
+        <Text style={styles.flamText}>{selectedFlam}</Text>
       </Pressable>
     </SafeAreaView>
   );

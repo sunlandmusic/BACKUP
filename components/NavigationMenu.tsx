@@ -9,48 +9,6 @@ interface NavigationMenuProps {
   currentRoute: string;
 }
 
-// Custom icon components to match the image
-const PianoIcon = () => (
-  <View style={styles.customIcon}>
-    <Text style={styles.iconText}>🎹</Text>
-  </View>
-);
-
-const HeadphoneIcon = () => (
-  <View style={styles.customIcon}>
-    <Text style={styles.iconText}>🎧</Text>
-  </View>
-);
-
-// Equalizer fader icon for User
-const UserIcon = () => (
-  <View style={styles.customIcon}>
-    <View style={styles.equalizerContainer}>
-      <View style={styles.equalizerBar}>
-        <View style={[styles.equalizerFader, { height: '60%' }]} />
-      </View>
-      <View style={styles.equalizerBar}>
-        <View style={[styles.equalizerFader, { height: '40%' }]} />
-      </View>
-      <View style={styles.equalizerBar}>
-        <View style={[styles.equalizerFader, { height: '80%' }]} />
-      </View>
-    </View>
-  </View>
-);
-
-const ProgressionIcon = () => (
-  <View style={styles.customIcon}>
-    <Text style={[styles.iconText, { color: 'white' }]}>🎵</Text>
-  </View>
-);
-
-const GridIcon = () => (
-  <View style={styles.customIcon}>
-    <Text style={styles.iconText}>📊</Text>
-  </View>
-);
-
 export const NavigationMenu: React.FC<NavigationMenuProps> = ({ 
   visible, 
   onClose,
@@ -58,9 +16,6 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({
 }) => {
   // Animation value for sliding in/out
   const slideAnim = React.useRef(new Animated.Value(-300)).current;
-  
-  // Screen dimensions
-  const { width } = Dimensions.get('window');
   
   // Update animation when visibility changes
   useEffect(() => {
@@ -85,23 +40,19 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({
   // Navigation items
   const navItems = [
     { 
-      label: 'CHORD', 
-      icon: <PianoIcon />,
+      label: 'CHORD\nCOMPOSE', 
       route: routes.chord
     },
     { 
-      label: 'CORDINATE', 
-      icon: <GridIcon />,
+      label: 'CHORD\n- INATE', 
       route: routes.cordinate
     },
     {
-      label: 'PIANO XL',
-      icon: <PianoIcon />,
+      label: 'PIANO\nXL',
       route: routes.pianoxl
     },
     {
       label: 'MIX',
-      icon: <HeadphoneIcon />,
       route: routes.mix
     }
   ];
@@ -145,9 +96,6 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({
               ]}
               onPress={() => handleNavigation(item.route)}
             >
-              <View style={styles.iconContainer}>
-                {item.icon}
-              </View>
               <Text style={styles.navLabel}>{item.label}</Text>
             </Pressable>
           ))}
@@ -165,17 +113,17 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    zIndex: 9,
+    zIndex: 999,
   },
   container: {
     position: 'absolute',
     top: 0,
     left: 0,
     bottom: 0,
-    width: 175,
-    backgroundColor: colors.surface,
-    zIndex: 10,
-    paddingTop: 50,
+    width: 205,
+    backgroundColor: '#000000',
+    zIndex: 1000,
+    paddingTop: 88,
     paddingHorizontal: 16,
     borderTopRightRadius: 16,
     borderBottomRightRadius: 16,
@@ -191,49 +139,16 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 8,
     width: '100%',
+    justifyContent: 'center',
   },
   activeNavItem: {
     backgroundColor: colors.primary,
   },
-  iconContainer: {
-    width: 32,
-    height: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
   navLabel: {
     color: colors.text,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  customIcon: {
-    width: 24,
-    height: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  iconText: {
-    fontSize: 18,
-  },
-  equalizerContainer: {
-    flexDirection: 'row',
-    height: 20,
-    width: 20,
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-  },
-  equalizerBar: {
-    width: 4,
-    height: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    borderRadius: 2,
-    overflow: 'hidden',
-    justifyContent: 'flex-end',
-  },
-  equalizerFader: {
-    width: '100%',
-    backgroundColor: 'white',
-    borderRadius: 2,
+    fontSize: 18.4,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 23,
   },
 });
