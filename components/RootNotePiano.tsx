@@ -28,31 +28,31 @@ export function RootNotePiano({ onNoteSelect, selectedKey = 'C', mode = 'major' 
   }, [selectedKey, mode]);
 
   const handleKeyPress = (note: string) => {
-    if (selectedNote === note) {
-      setSelectedNote(null);
-      stopChord();
-      onNoteSelect?.('');
-      setCurrentChord(null);
+    setSelectedNote(note);
+    // Get diatonic chords for the current key and mode
+    const diatonicChords = getDiatonicChords(selectedKey, mode);
+    // Find the chord for this note
+    const chord = diatonicChords.find(c => c.root === note);
+    
+    if (chord) {
+      // Play the chord and update the display
+      playChord(chord.notes);
+      setCurrentChord(chord);
+      onNoteSelect?.(note);
     } else {
-      setSelectedNote(note);
-      // Get diatonic chords for the current key and mode
-      const diatonicChords = getDiatonicChords(selectedKey, mode);
-      // Find the chord for this note
-      const chord = diatonicChords.find(c => c.root === note);
-      
-      if (chord) {
-        // Play the chord and update the display
-        playChord(chord.notes);
-        setCurrentChord(chord);
-        onNoteSelect?.(note);
-      } else {
-        // If no diatonic chord found, play just the root note
-        const midiNote = 60 + ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-          .indexOf(note);
-        playChord([midiNote]);
-        onNoteSelect?.(note);
-      }
+      // If no diatonic chord found, play just the root note
+      const midiNote = 60 + ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+        .indexOf(note);
+      playChord([midiNote]);
+      onNoteSelect?.(note);
     }
+  };
+
+  const handleKeyRelease = (note: string) => {
+    setSelectedNote(null);
+    stopChord();
+    onNoteSelect?.('');
+    setCurrentChord(null);
   };
 
   const renderWhiteKeys = () => {
@@ -64,7 +64,8 @@ export function RootNotePiano({ onNoteSelect, selectedKey = 'C', mode = 'major' 
           selectedNote === note && styles.whiteKeyHighlighted,
           scaleNotes.includes(note as NoteName) && styles.whiteKeyInScale,
         ]}
-        onPress={() => handleKeyPress(note)}
+        onPressIn={() => handleKeyPress(note)}
+        onPressOut={() => handleKeyRelease(note)}
       >
         <View style={[
           styles.whiteKeyInner,
@@ -92,7 +93,8 @@ export function RootNotePiano({ onNoteSelect, selectedKey = 'C', mode = 'major' 
           selectedNote === note && styles.blackKeyHighlighted,
           scaleNotes.includes(note as NoteName) && styles.blackKeyInScale,
         ]}
-        onPress={() => handleKeyPress(note)}
+        onPressIn={() => handleKeyPress(note)}
+        onPressOut={() => handleKeyRelease(note)}
       >
         <Text style={[
           styles.noteLabel,

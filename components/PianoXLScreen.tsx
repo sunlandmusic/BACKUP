@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, SafeAreaView, Modal, TouchableOpacity, ImageBackground } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { Eye, Save, Image as ImageIcon } from 'lucide-react-native';
 import { colors } from '@/constants/colors';
 import { NoteName, MusicMode, Chord, ChordType, InstrumentType } from '@/types/music';
@@ -68,6 +69,7 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const [isSlotSelectionActive, setIsSlotSelectionActive] = useState(false);
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   
   // Update scale notes when key or mode changes
   useEffect(() => {
@@ -180,7 +182,18 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
 
   // Handle value adjustments with limits
   const handleAdjustValue = (direction: 'up' | 'down') => {
-    console.log('Adjusting value:', direction, 'Selected control:', selectedControl);
+    // If save confirmation is visible and slot selection is active
+    if (showSaveConfirm && isSlotSelectionActive && selectedSlot !== null) {
+      const emptySlots = findEmptySlots();
+      const currentIndex = emptySlots.indexOf(selectedSlot);
+      if (currentIndex !== -1) {
+        const newIndex = direction === 'up' ?
+          (currentIndex + 1) % emptySlots.length :
+          (currentIndex - 1 + emptySlots.length) % emptySlots.length;
+        setSelectedSlot(emptySlots[newIndex]);
+      }
+      return;
+    }
 
     // If sound window is selected, handle sound selection
     if (isSoundWindowSelected) {
@@ -189,23 +202,11 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
         (currentIndex + 1) % availableSounds.length :
         (currentIndex - 1 + availableSounds.length) % availableSounds.length;
       setSelectedSound(availableSounds[newIndex]);
-        return;
-      }
+      return;
+    }
 
-    // If save confirmation is visible and slot selection is active
-    if (showSaveConfirm && isSlotSelectionActive && selectedSlot !== null) {
-      const emptySlots = findEmptySlots();
-      const currentIndex = emptySlots.indexOf(selectedSlot);
-      const newIndex = direction === 'up' ?
-        (currentIndex + 1) % emptySlots.length :
-        (currentIndex - 1 + emptySlots.length) % emptySlots.length;
-      setSelectedSlot(emptySlots[newIndex]);
-        return;
-      }
-
-    // Handle setting adjustments
+    // If a setting is selected, handle that
     if (selectedControl) {
-      console.log('Adjusting setting:', selectedControl);
       switch (selectedControl) {
         case 'key':
           const currentKeyIndex = KEYS.indexOf(selectedKey);
@@ -224,23 +225,23 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
           break;
 
         case 'octave':
-          setOctave(prev => {
-            const newValue = direction === 'up' ? prev + 1 : prev - 1;
-            return Math.max(-3, Math.min(3, newValue));
-          });
+          const newOctave = direction === 'up' ?
+            Math.min(octave + 1, 3) :
+            Math.max(octave - 1, -3);
+          setOctave(newOctave);
           break;
 
         case 'inversion':
-          setInversion(prev => {
-            const newValue = direction === 'up' ? prev + 1 : prev - 1;
-            return Math.max(-2, Math.min(2, newValue));
-          });
+          const newInversion = direction === 'up' ?
+            Math.min(inversion + 1, 3) :
+            Math.max(inversion - 1, -3);
+          setInversion(newInversion);
           break;
       }
       return;
     }
 
-    // Handle chord type cycling when no setting is selected
+    // If no setting is selected and a note is pressed, cycle through chord types
     if (lastPressedNote && scaleNotes.includes(lastPressedNote)) {
       const availableTypes = getAvailableChordTypes(lastPressedNote);
       if (availableTypes.length === 0) return;
@@ -258,8 +259,32 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
       const newChordType = availableTypes[newIndex];
       const newChord = createChord(lastPressedNote, newChordType);
       if (newChord) {
-        setStoreChord(newChord);
-        setCurrentChord(newChord);
+        // Apply current octave and inversion settings
+        const modifiedNotes = newChord.notes.map(note => {
+          let modifiedNote = note;
+          if (octave !== 0) {
+            modifiedNote += 12 * octave;
+          }
+          return modifiedNote;
+        });
+
+        // Apply inversion if set
+        if (inversion !== 0) {
+          for (let i = 0; i < Math.abs(inversion); i++) {
+            if (inversion > 0) {
+              modifiedNotes[0] += 12;
+              modifiedNotes.push(modifiedNotes.shift()!);
+            } else {
+              modifiedNotes[modifiedNotes.length - 1] -= 12;
+              modifiedNotes.unshift(modifiedNotes.pop()!);
+            }
+          }
+        }
+
+        const modifiedChord = { ...newChord, notes: modifiedNotes };
+        setStoreChord(modifiedChord);
+        setCurrentChord(modifiedChord);
+        playChord(modifiedNotes, selectedSound);
       }
     }
   };
@@ -398,6 +423,8 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
   // Find next empty slot and all available empty slots
   const findEmptySlots = () => {
     const emptySlots: number[] = [];
+    if (!savedChords) return emptySlots;
+    
     for (let i = 0; i < 32; i++) {
       if (!savedChords[i]) {
         emptySlots.push(i);
@@ -411,36 +438,62 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
     setIsSlotSelectionActive(!isSlotSelectionActive);
   };
 
+  // Find highest empty slot
+  const findHighestEmptySlot = () => {
+    if (!savedChords) return null;
+    // Start from 31 (slot 32) and go backwards
+    for (let i = 31; i >= 0; i--) {
+      if (!savedChords[i]) {
+        return i;
+      }
+    }
+    return null;
+  };
+
   // Handle save button press
   const handleSavePress = () => {
-    if (!lastPressedNote) {
-      return;
+    try {
+      if (!currentChord) return;
+      
+      const emptySlot = findHighestEmptySlot();
+      if (emptySlot === null) return;
+
+      saveChord(currentChord, emptySlot);
+      setIsSaving(true);
+      setTimeout(() => {
+        setIsSaving(false);
+      }, 1000);
+    } catch (error) {
+      console.error('Error saving chord:', error);
     }
-    
-    const emptySlots = findEmptySlots();
-    if (emptySlots.length === 0) {
-      return;
-    }
-    
-    setSelectedSlot(emptySlots[0]);
-      setShowSaveConfirm(true);
   };
 
   // Handle save confirmation
   const handleSaveConfirm = () => {
-    if (selectedSlot === null || !lastPressedNote) {
-      return;
-    }
+    try {
+      if (selectedSlot === null || !currentChord) {
+        console.log('Cannot save: missing slot or chord');
+        return;
+      }
 
-    const chordType = getCurrentChordType(lastPressedNote);
-    const chord = createChord(lastPressedNote, chordType);
-    
-    if (chord) {
-      saveChord(chord, selectedSlot);
+      saveChord(currentChord, selectedSlot);
+      setShowSaveConfirm(false);
+      setIsSlotSelectionActive(false);
+      setSelectedSlot(null);
+    } catch (error) {
+      console.error('Error in handleSaveConfirm:', error);
     }
-    
-    setShowSaveConfirm(false);
-    setIsSlotSelectionActive(false);
+  };
+
+  // Handle save cancel
+  const handleSaveCancel = () => {
+    try {
+      setShowSaveConfirm(false);
+      setIsSlotSelectionActive(false);
+      setSelectedSlot(null);
+    } catch (error) {
+      console.error('Error in handleSaveCancel:', error);
+    }
   };
 
   // Add useEffect to monitor savedChords changes
@@ -511,11 +564,25 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar style="light" />
+      
       <View style={styles.contentOverlay}>
-        {/* Eye button */}
+        {/* Eye button at top left corner */}
         <Pressable style={styles.eyeButton} onPress={toggleMenu}>
           <Eye size={28} color={colors.text} />
         </Pressable>
+
+        {/* Vertical "PIANO XL" text */}
+        <View style={styles.verticalTitleContainer}>
+          <Text style={styles.verticalTitleText}>P</Text>
+          <Text style={styles.verticalTitleText}>I</Text>
+          <Text style={styles.verticalTitleText}>A</Text>
+          <Text style={styles.verticalTitleText}>N</Text>
+          <Text style={styles.verticalTitleText}>O</Text>
+          <Text style={styles.verticalTitleText}> </Text>
+          <Text style={styles.verticalTitleText}>X</Text>
+          <Text style={styles.verticalTitleText}>L</Text>
+        </View>
 
         {/* Skin button */}
         <Pressable 
@@ -527,7 +594,13 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
         </Pressable>
 
         {/* Save button */}
-        <Pressable style={styles.saveButton} onPress={handleSavePress}>
+        <Pressable 
+          style={[
+            styles.saveButton,
+            isSaving && styles.saveButtonActive
+          ]} 
+          onPress={handleSavePress}
+        >
           <View style={styles.saveButtonTextContainer}>
             <Text style={styles.saveButtonText}>SAVE</Text>
             <Text style={styles.saveButtonText}>CHORD</Text>
@@ -630,52 +703,54 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
         />
 
         {/* Save Confirmation Modal */}
-        <Modal
-          visible={showSaveConfirm}
-          transparent={true}
-          animationType="fade"
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Save Chord</Text>
-              <Text style={styles.modalText}>
-                Save {lastPressedNote ? getChordName(lastPressedNote) : ''} to
-              </Text>
-              <Pressable
-                onPress={handleSlotSelect}
-                style={[
-                  styles.slotSelector,
-                  isSlotSelectionActive && styles.slotSelectorActive
-                ]}
+        {showSaveConfirm && (
+          <Modal
+            visible={true}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={handleSaveCancel}
+          >
+            <Pressable 
+              style={styles.modalOverlay}
+              onPress={handleSaveCancel}
+            >
+              <Pressable 
+                style={styles.modalContent}
+                onPress={(e) => e.stopPropagation()}
               >
-                <Text style={[
-                  styles.modalText,
-                  isSlotSelectionActive && styles.modalTextHighlighted
-                ]}>
-                  SLOT {selectedSlot !== null ? selectedSlot + 1 : ''}
+                <Text style={styles.modalTitle}>Save Chord</Text>
+                <Text style={styles.modalText}>
+                  Save {currentChord ? getFullChordName(currentChord) : ''} to
                 </Text>
+                <Pressable
+                  style={[
+                    styles.slotSelector,
+                    isSlotSelectionActive && styles.slotSelectorActive
+                  ]}
+                  onPress={handleSlotSelect}
+                >
+                  <Text style={[styles.modalText, styles.modalTextHighlighted]}>
+                    SLOT {(selectedSlot !== null ? selectedSlot + 1 : 1)}
+                  </Text>
+                </Pressable>
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={styles.modalButton}
+                    onPress={handleSaveCancel}
+                  >
+                    <Text style={styles.modalButtonText}>NO</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalButtonConfirm]}
+                    onPress={handleSaveConfirm}
+                  >
+                    <Text style={[styles.modalButtonText, styles.modalButtonTextConfirm]}>YES</Text>
+                  </TouchableOpacity>
+                </View>
               </Pressable>
-              <Text style={styles.modalText}>?</Text>
-              <View style={styles.modalButtons}>
-                <Pressable
-                  style={[styles.modalButton, styles.modalButtonNo]}
-                  onPress={() => {
-                    setShowSaveConfirm(false);
-                    setIsSlotSelectionActive(false);
-                  }}
-                >
-                  <Text style={styles.modalButtonText}>NO</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.modalButton, styles.modalButtonYes]}
-                  onPress={handleSaveConfirm}
-                >
-                  <Text style={styles.modalButtonText}>YES</Text>
-                </Pressable>
-              </View>
-            </View>
-          </View>
-        </Modal>
+            </Pressable>
+          </Modal>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -714,6 +789,9 @@ const styles = StyleSheet.create({
     zIndex: 10,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  saveButtonActive: {
+    backgroundColor: colors.primary,
   },
   saveButtonTextContainer: {
     alignItems: 'center',
@@ -1001,23 +1079,23 @@ const styles = StyleSheet.create({
   },
   modalButton: {
     paddingVertical: 10,
-    paddingHorizontal: 30,
+    paddingHorizontal: 20,
     borderRadius: 8,
-    minWidth: 100,
-    alignItems: 'center',
+    backgroundColor: colors.surface,
+    marginHorizontal: 10,
+    minWidth: 80,
   },
-  modalButtonNo: {
-    backgroundColor: colors.buttonGrey,
-    marginRight: 10,
-  },
-  modalButtonYes: {
+  modalButtonConfirm: {
     backgroundColor: colors.primary,
-    marginLeft: 10,
   },
   modalButtonText: {
     color: colors.text,
     fontSize: 16,
     fontWeight: '600',
+    textAlign: 'center',
+  },
+  modalButtonTextConfirm: {
+    color: colors.textOffWhite,
   },
   mainContent: {
     flex: 1,
@@ -1057,5 +1135,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
+  },
+  verticalTitleContainer: {
+    position: 'absolute',
+    left: -30,
+    top: 172,
+    flexDirection: 'row',
+    transform: [{ rotate: '-90deg' }],
+    zIndex: 1000,
+  },
+  verticalTitleText: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '200',
+    letterSpacing: 0.5,
+    marginHorizontal: 1,
   },
 }); 
