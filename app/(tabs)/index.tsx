@@ -773,7 +773,7 @@ export default function ChordComposeScreen() {
         <Text style={styles.verticalTitleText}>S</Text>
         <Text style={styles.verticalTitleText}>E</Text>
       </View>
-      
+
       <View style={styles.gridNavContainer}>
         <Pressable 
           style={styles.gridNavButton}
@@ -835,7 +835,7 @@ export default function ChordComposeScreen() {
               chord={getCurrentChordDisplay()}
               selectedKey={currentKey}
               inversion={inversion}
-              selectedSetting={selectedControl as any}
+              selectedSetting={selectedControl as 'key' | 'mode' | 'octave' | 'inversion' | undefined}
               onSettingSelect={(setting) => handleControlSelect(setting as SettingType)}
             />
             
@@ -918,7 +918,7 @@ export default function ChordComposeScreen() {
         </View>
       </View>
       
-      {/* Plus/Minus buttons at right - restored to original position */}
+      {/* Plus/Minus buttons at right */}
       <View style={styles.plusMinusContainer}>
         <Pressable
           style={styles.plusButton}
@@ -1019,6 +1019,30 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     marginLeft: 30, // Reduced from 60px to 30px to slide everything left by 30px
     marginTop: 0, // Removed top margin to move everything up
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+  },
+  settingsContainer: {
+    flex: 1,
+  },
+  menuButtonContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  menuButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   // Eye button at top left corner
   eyeButton: {

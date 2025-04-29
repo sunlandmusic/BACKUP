@@ -51,12 +51,6 @@
         {
           "initialOrientation": "LANDSCAPE_LEFT"
         }
-      ],
-      [
-        "expo-image-picker",
-        {
-          "photosPermission": "Allow CHORD-INATOR to access your photos."
-        }
       ]
     ],
     "experiments": {

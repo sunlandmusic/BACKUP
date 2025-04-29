@@ -28,7 +28,6 @@ export function SettingsPanel({
     let mainText = '';
     let alternateName = '';
     
-    // Handle modes with alternate names
     switch (upperMode) {
       case 'OFF': 
         mainText = '';  // Remove MODE from here since it's handled by the label
@@ -74,10 +73,10 @@ export function SettingsPanel({
     // Add dynamic font size calculation for chord display
     const getChordFontSize = (chordName: string) => {
       const length = chordName.length;
-      if (length <= 5) return 28;
+      if (length <= 5) return 28; // Maximum size for short names
       if (length <= 7) return 24;
       if (length <= 9) return 20;
-      return 16;
+      return 16; // Minimum size for very long names
     };
 
     return (
@@ -95,8 +94,7 @@ export function SettingsPanel({
           }
         }}
       >
-        {/* Only show MODE label for mode setting when value is OFF */}
-        {(settingKey !== 'mode' || value.toString().toUpperCase() === 'OFF') && (
+        {(label !== 'MODE' || value.toString().toUpperCase() === 'OFF') && (
           <Text style={[styles.settingLabel, { fontSize: 15 }]}>{label}</Text>
         )}
         {settingKey === 'mode' ? (
@@ -104,10 +102,9 @@ export function SettingsPanel({
         ) : (
           <Text style={[
             styles.settingValue,
-            { fontSize: 20 },
             isChord && [
               styles.chordValue,
-              { fontSize: 20 }
+              { fontSize: isChord ? getChordFontSize(value.toString()) : 20 }
             ]
           ]}>
             {value}
@@ -172,7 +169,7 @@ const styles = StyleSheet.create({
     fontWeight: '400',
   },
   chordValue: {
-    fontSize: 28, // This will be overridden by dynamic sizing
+    fontSize: 28,
     textAlign: 'center',
     width: '100%',
   },

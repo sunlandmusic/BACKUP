@@ -324,6 +324,15 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
     isSelected?: boolean;
     onPress?: () => void;
   }) => {
+    // Add dynamic font size calculation for chord display
+    const getChordFontSize = (chordName: string) => {
+      const length = chordName.length;
+      if (length <= 5) return 28; // Maximum size for short names
+      if (length <= 7) return 24;
+      if (length <= 9) return 20;
+      return 16; // Minimum size for very long names
+    };
+
     const settingType = label.toLowerCase() as SettingType;
     
     return (
@@ -331,6 +340,7 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
         style={[
           styles.settingItem,
           label === 'MODE' && styles.modeSettingItem,
+          label === 'CHORD' && styles.chordDisplay,
           isSelected && styles.selectedSetting
         ]}
       onPress={onPress}
@@ -343,7 +353,10 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
       ) : (
         <Text style={[
           styles.settingValue,
-          label === 'CHORD' && styles.chordValue
+          label === 'CHORD' && [
+            styles.chordValue,
+            { fontSize: getChordFontSize(value.toString()) }
+          ]
         ]}>{value}</Text>
       )}
     </Pressable>
@@ -447,6 +460,15 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
     return getChordName(chord.root);
   };
 
+  // Add dynamic font size calculation for chord display
+  const getChordFontSize = (chordName: string) => {
+    const length = chordName.length;
+    if (length <= 5) return 28; // Maximum size for short names
+    if (length <= 7) return 24;
+    if (length <= 9) return 20;
+    return 16; // Minimum size for very long names
+  };
+
   // Load saved background on mount
   useEffect(() => {
     loadSavedBackground();
@@ -490,13 +512,13 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.contentOverlay}>
-      {/* Eye button */}
-      <Pressable style={styles.eyeButton} onPress={toggleMenu}>
-        <Eye size={28} color={colors.text} />
-      </Pressable>
+        {/* Eye button */}
+        <Pressable style={styles.eyeButton} onPress={toggleMenu}>
+          <Eye size={28} color={colors.text} />
+        </Pressable>
 
         {/* Skin button */}
-      <Pressable 
+        <Pressable 
           style={styles.skinButton} 
           onPress={handleSelectBackground}
           onLongPress={handleRemoveBackground}
@@ -510,18 +532,18 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
             <Text style={styles.saveButtonText}>SAVE</Text>
             <Text style={styles.saveButtonText}>CHORD</Text>
           </View>
-      </Pressable>
+        </Pressable>
 
-      {/* Sound selection window */}
-      <Pressable 
-        style={[
-          styles.soundWindow,
-          isSoundWindowSelected && styles.soundWindowSelected
-        ]}
+        {/* Sound selection window */}
+        <Pressable 
+          style={[
+            styles.soundWindow,
+            isSoundWindowSelected && styles.soundWindowSelected
+          ]}
           onPress={cycleInstrument}
-      >
+        >
           <Text style={styles.soundText}>{formatInstrumentName(selectedSound).toUpperCase()}</Text>
-      </Pressable>
+        </Pressable>
 
         {backgroundImage && (
           <ImageBackground 
@@ -531,125 +553,130 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
           />
         )}
 
-      <View style={styles.mainContent}>
-        {/* Piano Keys */}
-        <View style={styles.pianoContainer}>
-          <View style={styles.whiteKeysRow}>
-            {['C', 'D', 'E', 'F', 'G', 'A', 'B'].map(note => (
-              <PianoKey key={note} note={note} isWhite={true} />
-            ))}
+        <View style={styles.mainContent}>
+          {/* Piano Keys */}
+          <View style={styles.pianoContainer}>
+            <View style={styles.whiteKeysRow}>
+              {['C', 'D', 'E', 'F', 'G', 'A', 'B'].map(note => (
+                <PianoKey key={note} note={note} isWhite={true} />
+              ))}
+            </View>
+            <View style={styles.blackKeysRow}>
+              {['C#', 'D#', null, 'F#', 'G#', 'A#'].map((note, index) => (
+                note ? <PianoKey key={note} note={note} isWhite={false} /> : <View key={index} style={styles.blackKeyPlaceholder} />
+              ))}
+            </View>
           </View>
-          <View style={styles.blackKeysRow}>
-            {['C#', 'D#', null, 'F#', 'G#', 'A#'].map((note, index) => (
-              note ? <PianoKey key={note} note={note} isWhite={false} /> : <View key={index} style={styles.blackKeyPlaceholder} />
-            ))}
-          </View>
-        </View>
 
-        {/* Settings Panel */}
-        <View style={styles.settingsPanel}>
-          <SettingItem 
-            label="KEY" 
-            value={selectedKey}
-            isSelected={selectedControl === 'key'}
-            onPress={() => handleSettingSelect('key')}
-          />
-          <SettingItem 
-            label="MODE" 
-            value={mode}
-            isSelected={selectedControl === 'mode'}
-            onPress={() => handleSettingSelect('mode')}
-          />
-          <SettingItem 
-            label="OCT" 
-            value={octave}
-            isSelected={selectedControl === 'octave'}
-            onPress={() => handleSettingSelect('octave')}
-          />
-          <SettingItem 
-            label="INV" 
-            value={inversion}
-            isSelected={selectedControl === 'inversion'}
-            onPress={() => handleSettingSelect('inversion')}
-          />
-          <View style={styles.chordDisplay}>
-            <Text style={styles.chordLabel}>CHORD</Text>
-              <Text style={styles.chordValue}>{getFullChordName(currentChord)}</Text>
+          {/* Settings Panel */}
+          <View style={styles.settingsPanel}>
+            <SettingItem 
+              label="KEY" 
+              value={selectedKey}
+              isSelected={selectedControl === 'key'}
+              onPress={() => handleSettingSelect('key')}
+            />
+            <SettingItem 
+              label="MODE" 
+              value={mode}
+              isSelected={selectedControl === 'mode'}
+              onPress={() => handleSettingSelect('mode')}
+            />
+            <SettingItem 
+              label="OCT" 
+              value={octave}
+              isSelected={selectedControl === 'octave'}
+              onPress={() => handleSettingSelect('octave')}
+            />
+            <SettingItem 
+              label="INV" 
+              value={inversion}
+              isSelected={selectedControl === 'inversion'}
+              onPress={() => handleSettingSelect('inversion')}
+            />
+            <View style={styles.chordDisplay}>
+              <Text style={styles.chordLabel}>CHORD</Text>
+              <Text style={[
+                styles.chordValue,
+                { fontSize: getChordFontSize(getFullChordName(currentChord)) }
+              ]}>
+                {getFullChordName(currentChord)}
+              </Text>
             </View>
           </View>
         </View>
-      </View>
 
-      {/* Plus/Minus Buttons */}
-      <View style={styles.plusMinusContainer}>
-        <Pressable 
-          style={styles.plusButton}
-          onPress={() => handleAdjustValue('up')}
-        >
-          <Text style={styles.plusMinusText}>+</Text>
-        </Pressable>
-        <Pressable 
-          style={styles.minusButton}
-          onPress={() => handleAdjustValue('down')}
-        >
-          <Text style={styles.plusMinusText}>-</Text>
-        </Pressable>
-      </View>
-
-      {/* Navigation Menu */}
-      <NavigationMenu 
-        visible={menuVisible} 
-        onClose={() => setMenuVisible(false)} 
-        currentRoute={pathname}
-      />
-
-      {/* Save Confirmation Modal */}
-      <Modal
-        visible={showSaveConfirm}
-        transparent={true}
-        animationType="fade"
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Save Chord</Text>
-            <Text style={styles.modalText}>
-              Save {lastPressedNote ? getChordName(lastPressedNote) : ''} to
-            </Text>
-            <Pressable
-              onPress={handleSlotSelect}
-              style={[
-                styles.slotSelector,
-                isSlotSelectionActive && styles.slotSelectorActive
-              ]}
-            >
-              <Text style={[
-                styles.modalText,
-                isSlotSelectionActive && styles.modalTextHighlighted
-              ]}>
-                SLOT {selectedSlot !== null ? selectedSlot + 1 : ''}
-              </Text>
-            </Pressable>
-            <Text style={styles.modalText}>?</Text>
-            <View style={styles.modalButtons}>
-              <Pressable
-                style={[styles.modalButton, styles.modalButtonNo]}
-                onPress={() => {
-                  setShowSaveConfirm(false);
-                  setIsSlotSelectionActive(false);
-                }}
-              >
-                <Text style={styles.modalButtonText}>NO</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.modalButton, styles.modalButtonYes]}
-                onPress={handleSaveConfirm}
-              >
-                <Text style={styles.modalButtonText}>YES</Text>
-              </Pressable>
-    </View>
-          </View>
+        {/* Plus/Minus Buttons */}
+        <View style={styles.plusMinusContainer}>
+          <Pressable 
+            style={styles.plusButton}
+            onPress={() => handleAdjustValue('up')}
+          >
+            <Text style={styles.plusMinusText}>+</Text>
+          </Pressable>
+          <Pressable 
+            style={styles.minusButton}
+            onPress={() => handleAdjustValue('down')}
+          >
+            <Text style={styles.plusMinusText}>-</Text>
+          </Pressable>
         </View>
-      </Modal>
+
+        {/* Navigation Menu */}
+        <NavigationMenu 
+          visible={menuVisible} 
+          onClose={() => setMenuVisible(false)} 
+          currentRoute={pathname}
+        />
+
+        {/* Save Confirmation Modal */}
+        <Modal
+          visible={showSaveConfirm}
+          transparent={true}
+          animationType="fade"
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Save Chord</Text>
+              <Text style={styles.modalText}>
+                Save {lastPressedNote ? getChordName(lastPressedNote) : ''} to
+              </Text>
+              <Pressable
+                onPress={handleSlotSelect}
+                style={[
+                  styles.slotSelector,
+                  isSlotSelectionActive && styles.slotSelectorActive
+                ]}
+              >
+                <Text style={[
+                  styles.modalText,
+                  isSlotSelectionActive && styles.modalTextHighlighted
+                ]}>
+                  SLOT {selectedSlot !== null ? selectedSlot + 1 : ''}
+                </Text>
+              </Pressable>
+              <Text style={styles.modalText}>?</Text>
+              <View style={styles.modalButtons}>
+                <Pressable
+                  style={[styles.modalButton, styles.modalButtonNo]}
+                  onPress={() => {
+                    setShowSaveConfirm(false);
+                    setIsSlotSelectionActive(false);
+                  }}
+                >
+                  <Text style={styles.modalButtonText}>NO</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.modalButton, styles.modalButtonYes]}
+                  onPress={handleSaveConfirm}
+                >
+                  <Text style={styles.modalButtonText}>YES</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      </View>
     </SafeAreaView>
   );
 }
