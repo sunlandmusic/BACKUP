@@ -299,3 +299,53 @@ export const getChordFromMidi = (midiNote: number): Chord | null => {
   // This is a placeholder implementation
   return null;
 };
+
+// Define chord group types
+export type ChordGroup = 'TRIAD' | '4 NOTE' | 'HIGHER' | 'RANDOM';
+
+// Define chord priorities for each group
+export const CHORD_PRIORITIES = {
+  TRIAD: ['major', 'minor'],
+  FOUR_NOTE: [
+    // Priority 1: Simple common 4-note chords
+    '7', 'maj7', 'min7',
+    // Priority 2: Uncommon 4-note chords
+    'm7b5', 'dim7',
+    // Priority 3: Uncommon 3-note chords
+    'aug', 'dim', 'sus2', 'sus4',
+    // Priority 4: Basic triads
+    'major', 'minor'
+  ],
+  HIGHER: [
+    // Priority 1: Simpler 5-note chords
+    'maj9', 'min9', '9',
+    // Priority 2: Complex 5-note chords
+    '6/9', '11',
+    // Priority 3: Complex 4-note chords
+    'maj7', 'min7', '7',
+    // Priority 4: Simpler chords
+    'major', 'minor'
+  ]
+} as const;
+
+// Get all available chord types
+export const getAllChordTypes = () => {
+  const allChords = new Set<string>();
+  Object.values(CHORD_PRIORITIES).forEach(chords => {
+    chords.forEach(chord => allChords.add(chord));
+  });
+  return Array.from(allChords);
+};
+
+// Get chords for a specific group
+export const getChordsForGroup = (group: ChordGroup, mode: MusicMode): string[] => {
+  if (mode === 'off') {
+    return getAllChordTypes();
+  }
+  
+  if (group === 'RANDOM') {
+    return getAllChordTypes();
+  }
+  
+  return CHORD_PRIORITIES[group] || CHORD_PRIORITIES.TRIAD;
+};

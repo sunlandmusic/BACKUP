@@ -344,7 +344,7 @@ const styles = StyleSheet.create({
   },
   whiteKeyInScale: {
     borderColor: '#FFA500', // Orange color
-    borderWidth: 4, // Increased from 3 to 4 pixels (25% increase)
+    borderWidth: 3, // Changed from 2 to 3 pixels
   },
   whiteKeyInner: {
     flex: 1,

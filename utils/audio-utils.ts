@@ -69,12 +69,37 @@ const CLICK_SOUNDS = {
   2: require('../assets/click-voice/two.mp3'),
   3: require('../assets/click-voice/three.mp3'),
   4: require('../assets/click-voice/four.mp3')
-};
+} as const;
+
+const CLICK7_SOUND = require('../assets/click-voice/CLICK7.mp3');
 
 // Add a new state variable to track if we're currently playing
 let isCurrentlyPlaying = false;
 
 let initializationPromise: Promise<boolean> | null = null;
+
+// Add error handling for sound loading
+const loadClickSound = async (soundFile: any) => {
+  try {
+    const { sound } = await Audio.Sound.createAsync(
+      soundFile,
+      { 
+        shouldPlay: false,
+        volume: 0.2,
+        progressUpdateIntervalMillis: 50
+      },
+      (status: AVPlaybackStatus) => {
+        if ('error' in status) {
+          console.error('Error loading sound:', (status as any).error);
+        }
+      }
+    );
+    return sound;
+  } catch (error) {
+    console.error('Error creating sound:', error);
+    return null;
+  }
+};
 
 // Force reload all audio
 export const forceReloadAudio = async () => {
@@ -370,10 +395,11 @@ export const playNote = async (midiNote: number) => {
         oscillator.connect(gainNode);
         gainNode.connect(audioContext.destination);
 
-        // Improved envelope timing
-        gainNode.gain.setValueAtTime(0, currentTime);
-        gainNode.gain.linearRampToValueAtTime(0.7, currentTime + 0.02);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.5);
+        // Set initial gain with no attack time
+        const initialGain = 0.5;
+        const attackTime = 0; // No attack time
+        gainNode.gain.value = initialGain;
+        gainNode.gain.setValueAtTime(initialGain, currentTime);
 
         // Store references
         oscillators[midiNote] = oscillator;
@@ -458,7 +484,17 @@ export const playNote = async (midiNote: number) => {
         // Play the sound
         await noteSound.playAsync();
 
-        // Cleanup after sound finishes (typical note duration)
+        // Immediate volume increase with no delay
+        const steps = 1;
+        const stepTime = 0;
+        const targetVolume = 1.0;
+        
+        for (let i = 0; i <= steps; i++) {
+          await new Promise(resolve => setTimeout(resolve, stepTime));
+          await noteSound.setVolumeAsync((i / steps) * targetVolume);
+        }
+
+        // Cleanup after sound finishes
         setTimeout(async () => {
           try {
             if (soundObjects[noteKey]) {
@@ -468,7 +504,7 @@ export const playNote = async (midiNote: number) => {
           } catch (e) {
             console.warn(`Cleanup error for note ${midiNote}:`, e);
           }
-        }, 2000);
+        }, currentSustain * 100);
 
         logDebug(`Playing note ${midiNote} with instrument ${currentInstrument}`);
       } catch (e) {
@@ -503,15 +539,14 @@ export const stopNote = async (midiNote: number) => {
       // Safely stop the oscillator with proper cleanup
       const now = audioContext.currentTime;
       try {
-        // Fade out gain to avoid clicks
-        gainNode.gain.cancelScheduledValues(now);
-        gainNode.gain.setValueAtTime(gainNode.gain.value, now);
-        gainNode.gain.linearRampToValueAtTime(0, now + 0.01);
+        // Immediate full volume, no attack time
+        gainNode.gain.setValueAtTime(0.7, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
 
         // Schedule oscillator stop after fade out
         setTimeout(() => {
           try {
-            oscillator.stop(now + 0.02);
+            oscillator.stop(now + 0.00015);
             oscillator.disconnect();
             gainNode.disconnect();
           } catch (e) {
@@ -566,6 +601,8 @@ export const stopNote = async (midiNote: number) => {
 // Play a chord (multiple notes simultaneously)
 export const playChord = async (midiNotes: number[], instrument?: InstrumentType) => {
   try {
+    console.log('playChord called with notes:', midiNotes);
+    
     // First ensure audio is properly initialized
     if (!isAudioInitialized) {
       await initAudio();
@@ -580,6 +617,7 @@ export const playChord = async (midiNotes: number[], instrument?: InstrumentType
     await stopAllSounds();
 
     if (Platform.OS === 'web') {
+      console.log('Playing on web platform');
       if (!audioContext || !gainNode || !lowEQ || !midEQ || !highEQ) {
         await initAudio();
         if (!audioContext || !gainNode || !lowEQ || !midEQ || !highEQ) {
@@ -589,6 +627,7 @@ export const playChord = async (midiNotes: number[], instrument?: InstrumentType
 
       // Create and connect oscillators for each note
       midiNotes.forEach((midiNote, index) => {
+        console.log(`Setting up note ${midiNote} at index ${index}`);
         const osc = audioContext!.createOscillator();
         const noteGain = audioContext!.createGain();
 
@@ -597,15 +636,16 @@ export const playChord = async (midiNotes: number[], instrument?: InstrumentType
         noteGain.connect(lowEQ!);
 
         osc.frequency.value = midiToFrequency(midiNote);
+        console.log(`Frequency for note ${midiNote}:`, midiToFrequency(midiNote));
         
-        // Apply sample start delay
-        const startTime = audioContext!.currentTime + (currentSampleStart / 1000);
+        // Start immediately with no delay
+        const startTime = audioContext!.currentTime;
         
-        // Set initial gain and apply sustain
+        // Set initial gain with no attack time
         const initialGain = 0.5;
-        noteGain.gain.value = 0;
-        noteGain.gain.setValueAtTime(0, startTime);
-        noteGain.gain.linearRampToValueAtTime(initialGain, startTime + 0.01);
+        const attackTime = 0; // No attack time
+        noteGain.gain.value = initialGain;
+        noteGain.gain.setValueAtTime(initialGain, startTime);
         noteGain.gain.exponentialRampToValueAtTime(
           initialGain * (currentSustain / 100),
           startTime + 2.0
@@ -646,7 +686,7 @@ export const playChord = async (midiNotes: number[], instrument?: InstrumentType
             soundFile,
             {
               shouldPlay: false,
-              volume: 1.0,
+              volume: 0, // Start with volume at 0
               rate: Math.pow(2, (midiNote - 60) / 12),
               shouldCorrectPitch: true,
               progressUpdateIntervalMillis: 50
@@ -661,8 +701,18 @@ export const playChord = async (midiNotes: number[], instrument?: InstrumentType
           const flamDelay = getFlamDelay(currentFlamValue, currentBpm);
           await new Promise(resolve => setTimeout(resolve, index * flamDelay));
 
-          // Play the note
+          // Play the note with volume ramp
           await noteSound.playAsync();
+          
+          // Immediate volume increase with no delay
+          const steps = 1;
+          const stepTime = 0;
+          const targetVolume = 1.0;
+          
+          for (let i = 0; i <= steps; i++) {
+            await new Promise(resolve => setTimeout(resolve, stepTime));
+            await noteSound.setVolumeAsync((i / steps) * targetVolume);
+          }
 
           // Cleanup after sound finishes
           setTimeout(async () => {
@@ -929,54 +979,57 @@ export const playClick = async (step?: number) => {
       await initAudio();
     }
 
-    logDebug('Attempting to play click sound...');
+    logDebug('Attempting to play click sounds...');
     logDebug('Current step:', step);
     
-    // Determine which click sound to play based on the step
-    const clickNumber = step ? ((step - 1) % 4) + 1 : 1;
+    // Use the exact step number provided
+    const clickNumber = step || 1;
     logDebug(`Selected click number: ${clickNumber}`);
     
-    // Get the sound file
-    const soundFile = CLICK_SOUNDS[clickNumber as 1 | 2 | 3 | 4];
-    if (!soundFile) {
+    // Get the voice sound file
+    const voiceSoundFile = CLICK_SOUNDS[clickNumber as 1 | 2 | 3 | 4];
+    if (!voiceSoundFile) {
       throw new Error(`No sound file found for click ${clickNumber}`);
     }
-    logDebug('Sound file:', soundFile);
+    logDebug('Voice sound file:', voiceSoundFile);
 
-    // Create a new instance for this click
-    logDebug('Creating new sound instance...');
-    const { sound: newClick } = await Audio.Sound.createAsync(
-      soundFile,
-      { 
-        shouldPlay: false,
-        volume: typeof step === 'number' ? (step % 4 === 1 ? 1.0 : 0.7) : 1.0,
-        progressUpdateIntervalMillis: 50
-      }
-    );
+    // Create instances for both clicks with error handling
+    logDebug('Creating new sound instances...');
+    const [voiceClick, click7] = await Promise.all([
+      loadClickSound(voiceSoundFile),
+      loadClickSound(CLICK7_SOUND)
+    ]);
 
-    // Verify the sound loaded correctly
-    const status = await newClick.getStatusAsync();
-    logDebug('New click sound status:', status);
-    if (!status.isLoaded) {
-      throw new Error('Click sound failed to load properly');
+    if (!voiceClick || !click7) {
+      throw new Error('Failed to load one or both click sounds');
     }
 
-    // Play the click immediately
-    logDebug(`Playing voice click ${clickNumber}...`);
-    const playResult = await newClick.playAsync();
-    logDebug('Play result:', playResult);
+    // Set the start position for "four" sample
+    if (clickNumber === 4) {
+      await voiceClick.setPositionAsync(0.5);
+    }
 
-    // Clean up this instance after it finishes playing
+    // Play both clicks simultaneously
+    logDebug(`Playing voice click ${clickNumber} and CLICK7...`);
+    await Promise.all([
+      voiceClick.playAsync().catch(e => console.error('Error playing voice click:', e)),
+      click7.playAsync().catch(e => console.error('Error playing CLICK7:', e))
+    ]);
+
+    // Clean up both instances after they finish playing
     setTimeout(async () => {
       try {
-        await newClick.unloadAsync();
+        await Promise.all([
+          voiceClick.unloadAsync().catch(() => {}),
+          click7.unloadAsync().catch(() => {})
+        ]);
       } catch (e) {
-        console.error('Error cleaning up click sound:', e);
+        console.error('Error cleaning up click sounds:', e);
       }
     }, 1000);
 
   } catch (e) {
-    console.error('Error playing voice click:', e);
+    console.error('Error playing click sounds:', e);
     if (e instanceof Error) {
       logDebug('Error details:', {
         message: e.message,

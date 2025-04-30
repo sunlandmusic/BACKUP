@@ -619,11 +619,14 @@ export function PianoXL({ onNoteSelect }: PianoXLProps) {
         </Pressable>
 
         {backgroundImage && (
-          <ImageBackground 
-            source={{ uri: backgroundImage }} 
-            style={styles.backgroundImage}
-            resizeMode="cover"
-          />
+          <View style={styles.backgroundContainer}>
+            <ImageBackground 
+              source={{ uri: backgroundImage }} 
+              style={styles.backgroundImage}
+              resizeMode="cover"
+            />
+            <View style={styles.dimOverlay} />
+          </View>
         )}
 
         <View style={styles.mainContent}>
@@ -816,7 +819,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 5,
+    zIndex: 1002,
   },
   soundWindowSelected: {
     borderColor: 'rgba(255, 255, 255, 0.3)',
@@ -1104,6 +1107,15 @@ const styles = StyleSheet.create({
     paddingRight: 40,
     marginLeft: 40,
   },
+  backgroundContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
+  },
   backgroundImage: {
     position: 'absolute',
     left: 0,
@@ -1112,6 +1124,14 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: '100%',
     height: '100%',
+  },
+  dimOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)', // Back to 50% dim
   },
   contentOverlay: {
     flex: 1,

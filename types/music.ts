@@ -53,6 +53,7 @@ export interface Chord {
   duration?: number;
   inversion?: number; // 0 = root position, 1 = first inversion, etc.
   voicing?: number; // Different voicing options
+  isOccupied?: boolean; // Whether the step is occupied in the sequencer
 }
 
 // Scale modes

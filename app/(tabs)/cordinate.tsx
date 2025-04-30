@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, StyleSheet, Text, Pressable, SafeAreaView, Modal } from 'react-native';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { View, StyleSheet, Text, Pressable, SafeAreaView, Modal, ViewStyle, TextStyle, StyleProp } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Eye, Play, Square, ArrowLeftRight } from 'lucide-react-native';
 import { usePathname } from 'expo-router';
@@ -8,9 +8,9 @@ import { NavigationMenu } from '@/components/NavigationMenu';
 import { RootNotePiano } from '@/components/RootNotePiano';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { SavedChordGrid } from '@/components/SavedChordGrid';
-import { Chord, NoteName, MusicMode, ChordType } from '@/types/music';
-import { initAudio, playChord, stopChord, stopAllSounds, setBpm } from '@/utils/audio-utils';
-import { getDiatonicChords } from '@/utils/chord-utils';
+import { Chord, NoteName, MusicMode, ChordType, InstrumentType } from '@/types/music';
+import { initAudio, playChord, stopChord, stopAllSounds, setBpm, setInstrument, playClick as playClickSound } from '@/utils/audio-utils';
+import { getDiatonicChords, getChordsForGroup, createChord } from '@/utils/chord-utils';
 import { Animated } from 'react-native';
 import { Audio } from 'expo-av';
 import { useChordStore } from '@/stores/chord-store';
@@ -38,11 +38,19 @@ interface ChordOption {
 }
 
 // Add new types after the existing interfaces
-type ChordGroup = 'TRIAD' | '4 NOTE' | 'HIGHER' | 'RANDOM' | 'CUSTOM';
+type ChordGroup = 'TRIAD' | '4 NOTE' | 'HIGHER' | 'RANDOM';
 
 interface CustomChordAssignment {
   [key: string]: Chord; // key is the root note, value is the assigned chord
 }
+
+const availableSounds: InstrumentType[] = ['balafon', 'piano', 'rhodes', 'steel_drum', 'pluck', 'pad'];
+const formatInstrumentName = (name: InstrumentType): string => {
+  return name.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+};
+
+// Add type for button style
+type ButtonStyle = StyleProp<ViewStyle>;
 
 export default function CordinateScreen() {
   // Navigation menu state
@@ -130,84 +138,63 @@ export default function CordinateScreen() {
 
   // Add new state for chord groups after existing state declarations
   const [activeChordGroup, setActiveChordGroup] = useState<ChordGroup>('TRIAD');
-  const [customChordAssignments, setCustomChordAssignments] = useState<CustomChordAssignment>({});
-  const [lastPlayedChord, setLastPlayedChord] = useState<Chord | null>(null);
-  const customLongPressRef = useRef<NodeJS.Timeout | null>(null);
+  const [currentChordIndex, setCurrentChordIndex] = useState(0);
 
-  const handleCordinateButtonPress = (index: number) => {
-    const groups: ChordGroup[] = ['TRIAD', '4 NOTE', 'HIGHER', 'RANDOM', 'CUSTOM'];
-    if (index >= 0 && index < groups.length) {
-      const newGroup = groups[index];
-      setActiveChordGroup(newGroup);
-      setSelectedButton(index);
-      // Clear custom assignments when switching away from CUSTOM mode
-      if (newGroup !== 'CUSTOM') {
-        setCustomChordAssignments({});
-      }
-    }
-  };
+  const [clickSound, setClickSound] = useState<Audio.Sound | null>(null);
+  const [accentedClickSound, setAccentedClickSound] = useState<Audio.Sound | null>(null);
 
-  // Initialize audio on component mount
+  // Add after existing state declarations
+  const [selectedSound, setSelectedSound] = useState<InstrumentType>('balafon');
+  const [isSoundWindowSelected, setIsSoundWindowSelected] = useState(false);
+
+  // Initialize click sounds
   useEffect(() => {
-    const setupAudio = async () => {
+    const loadSounds = async () => {
       try {
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: false,
-          playsInSilentModeIOS: true,
-          shouldDuckAndroid: true,
-          playThroughEarpieceAndroid: false,
-          staysActiveInBackground: false,
-        });
+        const { sound: normalClick } = await Audio.Sound.createAsync(
+          require('@/assets/sounds/click-voice/one.mp3'),
+          { 
+            volume: 0.45, // -7dB reduction
+            shouldPlay: false
+          }
+        );
+        const { sound: accentedClick } = await Audio.Sound.createAsync(
+          require('@/assets/sounds/click-voice/four.mp3'),
+          { 
+            volume: 0.45, // -7dB reduction
+            shouldPlay: false
+          }
+        );
         
-        const ctx = await initAudio();
-        const audioCtx = ctx as unknown as AudioContext;
-        if (audioCtx?.createGain) {
-          const clickGain = audioCtx.createGain();
-          clickGain.gain.value = 0.1;
-          clickGain.connect(audioCtx.destination);
-          clickGainRef.current = clickGain;
-        }
+        // Keep sounds loaded and ready
+        await normalClick.setIsLoopingAsync(false);
+        await normalClick.setPositionAsync(0);
+        await accentedClick.setIsLoopingAsync(false);
+        await accentedClick.setPositionAsync(0);
+        
+        setClickSound(normalClick);
+        setAccentedClickSound(accentedClick);
       } catch (error) {
-        console.error('Error setting up audio:', error);
+        console.error('Error loading click sounds:', error);
       }
     };
-    
-    void setupAudio();
+
+    void loadSounds();
 
     return () => {
-      if (clickOscillatorRef.current) {
-        clickOscillatorRef.current.stop();
+      if (clickSound) {
+        void clickSound.unloadAsync();
       }
-      stopChord();
-      if (sequencerTimerRef.current) {
-        clearInterval(sequencerTimerRef.current);
+      if (accentedClickSound) {
+        void accentedClickSound.unloadAsync();
       }
     };
   }, []);
 
   // Function to play click sound
-  const playClick = (step: number) => {
-    if (!clickGainRef.current || !isClickEnabled) return;
-
-    const audioContext = clickGainRef.current.context;
-    
-    if (clickOscillatorRef.current) {
-      clickOscillatorRef.current.stop();
-    }
-
-    const oscillator = audioContext.createOscillator();
-    oscillator.type = 'sine';
-    
-    const isAccentedBeat = step % 4 === 0;
-    oscillator.frequency.value = isAccentedBeat ? 1500 : 1000;
-    
-    oscillator.connect(clickGainRef.current);
-    
-    const now = audioContext.currentTime;
-    oscillator.start(now);
-    oscillator.stop(now + 0.05);
-    
-    clickOscillatorRef.current = oscillator;
+  const playClick = async (step: number) => {
+    if (!isClickEnabled) return;
+    await playClickSound(step);
   };
 
   // Sequencer playback effect
@@ -218,15 +205,32 @@ export default function CordinateScreen() {
       const totalStepsInLoop = stepsPerBar * settings.bars;
 
       if (isClickEnabled) {
-        void playClick(0);
+        void playClick(1); // Start with first click sample
       }
 
       sequencerTimerRef.current = setInterval(() => {
         setCurrentStep(prev => {
           const nextStep = (prev + 1) % totalStepsInLoop;
           
-          if (isClickEnabled && nextStep % 2 === 0) {
-            void playClick(nextStep);
+          if (isClickEnabled) {
+            // Get the current bar number (0-3)
+            const currentBar = Math.floor(nextStep / 16) % 4;
+            // Get the position within the bar (0-15)
+            const positionInBar = nextStep % 16;
+            
+            if (positionInBar === 0) {
+              // First beat of each bar uses the bar number (1-4)
+              void playClick(currentBar + 1);
+            } else if (positionInBar === 4) {
+              // Third beat of each bar always plays "two"
+              void playClick(2);
+            } else if (positionInBar === 8) {
+              // Fourth beat of each bar always plays "three"
+              void playClick(3);
+            } else if (positionInBar === 12) {
+              // Fifth beat of each bar always plays "four"
+              void playClick(4);
+            }
           }
 
           const chord = stepSequencer.steps[nextStep];
@@ -274,13 +278,6 @@ export default function CordinateScreen() {
       setSelectedSetting(undefined);
     } else if (setting !== '') {
       setSelectedSetting(setting);
-      if (setting === 'key') {
-        // Show key selection UI
-        setShowGrid(true);
-      } else if (setting === 'mode') {
-        // Show mode selection UI
-        setShowGrid(true);
-      }
     } else {
       setSelectedSetting(undefined);
     }
@@ -291,41 +288,41 @@ export default function CordinateScreen() {
     setActiveSeqButton(button);
   };
 
-  // Handle long press for BPM adjustment
+  // Add single press handler
+  const handleSinglePress = (direction: 'up' | 'down') => {
+    handleSettingAdjust(direction);
+  };
+
+  // Update long press handler
   const handlePressIn = (direction: 'up' | 'down') => {
+    // First do a single adjustment
+    handleSinglePress(direction);
+    
     // Clear any existing timers
     if (longPressTimer) {
       clearInterval(longPressTimer);
+      setLongPressTimer(null);
     }
     if (initialDelayTimerRef.current) {
       clearTimeout(initialDelayTimerRef.current);
+      initialDelayTimerRef.current = null;
     }
 
-    const startTime = Date.now();
-    
-    // Initial delay before starting continuous adjustment
+    // Set initial delay before starting continuous adjustment
     initialDelayTimerRef.current = setTimeout(() => {
-      // Start continuous adjustment
       const timer = setInterval(() => {
-        const elapsedTime = Date.now() - startTime;
-        
-        // After 2.5 seconds, increase to fast speed
-        if (elapsedTime > 2500) {
-          setAdjustmentSpeed(10);
-        }
-        
         handleSettingAdjust(direction);
-      }, 100); // Adjust every 100ms
-      
+      }, 100); // Adjust every 100ms once rapid mode starts
       setLongPressTimer(timer);
-    }, 100); // Reduced initial delay to 100ms for better responsiveness
+      setAdjustmentSpeed(10); // Increase speed after delay
+    }, 1000); // 1 second delay before rapid adjustment starts
   };
 
   const handlePressOut = () => {
-    // Reset speed without triggering another adjustment
+    // Reset speed
     setAdjustmentSpeed(1);
     
-    // Clear timers
+    // Clear all timers
     if (longPressTimer) {
       clearInterval(longPressTimer);
       setLongPressTimer(null);
@@ -336,13 +333,56 @@ export default function CordinateScreen() {
     }
   };
 
-  // Handle settings adjustment
+  // Add effect to handle sound changes
+  useEffect(() => {
+    // Update the instrument when selectedSound changes
+    void setInstrument(selectedSound);
+  }, [selectedSound]);
+
+  // Add cycleSound function
+  const cycleSound = () => {
+    const currentIndex = availableSounds.indexOf(selectedSound);
+    const nextIndex = (currentIndex + 1) % availableSounds.length;
+    setSelectedSound(availableSounds[nextIndex]);
+  };
+
+  // Update handleSettingAdjust to remove sound cycling
   const handleSettingAdjust = (direction: 'up' | 'down') => {
-    if (!selectedSetting) return;
+    if (!selectedSetting && !activeSeqButton) return;
 
     const increment = direction === 'up' ? 1 : -1;
     const adjustmentMultiplier = adjustmentSpeed;
 
+    // Handle sequencer settings first
+    if (activeSeqButton) {
+      switch (activeSeqButton) {
+        case 'bpm':
+          const bpmChange = increment * adjustmentMultiplier;
+          setSettings(prev => ({
+            ...prev,
+            bpm: Math.max(30, Math.min(300, prev.bpm + bpmChange))
+          }));
+          setBpm(settings.bpm + bpmChange);
+          return;
+        case 'bars':
+          setSettings(prev => ({
+            ...prev,
+            bars: Math.max(1, Math.min(8, prev.bars + increment))
+          }));
+          return;
+        case 'timeSig':
+          const timeSignatures = ['4/4', '3/4', '6/8'];
+          const currentIndex = timeSignatures.indexOf(settings.timeSignature);
+          const newIndex = (currentIndex + increment + timeSignatures.length) % timeSignatures.length;
+          setSettings(prev => ({
+            ...prev,
+            timeSignature: timeSignatures[newIndex]
+          }));
+          return;
+      }
+    }
+
+    // Handle other settings
     switch (selectedSetting) {
       case 'key':
         const currentKeyIndex = KEYS.indexOf(selectedKey);
@@ -362,26 +402,11 @@ export default function CordinateScreen() {
         break;
 
       case 'inversion':
-        const newInversion = Math.max(0, Math.min(3, currentInversion + increment));
+        const newInversion = Math.max(-3, Math.min(3, currentInversion + increment));
         setCurrentInversion(newInversion);
         break;
 
-      case 'bpm':
-        const bpmChange = increment * adjustmentMultiplier;
-        setSettings(prev => {
-          const newSettings = { ...prev };
-          newSettings.bpm = Math.max(30, Math.min(300, prev.bpm + bpmChange));
-          setBpm(newSettings.bpm);
-          return newSettings;
-        });
-        break;
-
-      case 'bars':
-        setSettings(prev => {
-          const newSettings = { ...prev };
-          newSettings.bars = Math.max(1, Math.min(8, prev.bars + increment));
-          return newSettings;
-        });
+      default:
         break;
     }
   };
@@ -461,22 +486,22 @@ export default function CordinateScreen() {
   // Render step button
   const renderStepButton = (index: number) => {
     const chord = stepSequencer.steps[index];
-    const isActive = currentStep === index;
+    const isActive = index === currentStep && isPlaying;
 
     return (
       <Pressable
         key={index}
         style={[
-          styles.stepButton,
-          chord && styles.stepButtonActive,
+          styles.stepButton as ViewStyle,
+          chord && (styles.stepButtonActive as ViewStyle),
         ]}
         onPress={() => handleStepPress(index)}
       >
         <Text style={[
-          styles.stepText,
-          isActive ? styles.stepTextActive : styles.stepTextInactive
+          styles.stepText as TextStyle,
+          isActive ? (styles.stepTextActive as TextStyle) : (styles.stepTextInactive as TextStyle)
         ]}>
-          {index + 1}
+          {chord ? chord.root + chord.type : '—'}
         </Text>
       </Pressable>
     );
@@ -491,32 +516,26 @@ export default function CordinateScreen() {
   const renderProgressionButtons = () => {
     const startNumber = progressionPage * 4 + 1;
     return (
-      <View style={styles.progressionButtonsContainer}>
-        <View style={styles.progressionButtons}>
+      <View style={styles.progressionButtonsContainer as ViewStyle}>
+        <View style={styles.progressionButtons as ViewStyle}>
           {[0, 1, 2, 3].map((index) => (
             <Pressable
               key={index}
-              style={styles.progressionButton}
+              style={styles.progressionButton as ViewStyle}
             >
-              <Text style={styles.progressionButtonText}>{startNumber + index}</Text>
+              <Text style={styles.progressionButtonText as TextStyle}>{startNumber + index}</Text>
             </Pressable>
           ))}
         </View>
         <Pressable
-          style={styles.progressionToggleButton}
+          style={styles.progressionToggleButton as ViewStyle}
           onPress={handleProgressionPageToggle}
         >
-          <View style={styles.toggleArrowsContainer}>
+          <View style={styles.toggleArrowsContainer as ViewStyle}>
             <Play 
               size={14} 
               color={progressionPage === 0 ? colors.textMuted : colors.textOffWhite}
               style={{ transform: [{ rotate: '180deg' }] }}
-              fill={progressionPage === 0 ? colors.textMuted : colors.textOffWhite}
-            />
-            <Play 
-              size={14} 
-              color={progressionPage === 1 ? colors.textMuted : colors.textOffWhite}
-              fill={progressionPage === 1 ? colors.textMuted : colors.textOffWhite}
             />
           </View>
         </Pressable>
@@ -570,27 +589,37 @@ export default function CordinateScreen() {
     );
   };
 
-  // Render settings
+  // Add the toggle function
+  const toggleClick = useCallback(() => {
+    setIsClickEnabled(current => !current);
+  }, []);
+
+  // Update the settings render function
   const renderSettings = () => {
     return (
-      <View style={styles.settingsButtons}>
+      <View style={styles.settingsButtons as ViewStyle}>
         <View style={{ transform: [{ translateX: -4 }] }}>
           <Pressable 
-            style={[styles.settingsButton, isClickEnabled && styles.settingsButtonActive]}
-            onPress={() => setIsClickEnabled(!isClickEnabled)}
+            style={[
+              styles.settingsButton as ViewStyle, 
+              isClickEnabled && (styles.settingsButtonActive as ViewStyle)
+            ]}
+            onPress={toggleClick}
           >
-            <Text style={styles.settingsButtonName}>CLICK</Text>
-            <Text style={styles.settingsButtonValue}>{isClickEnabled ? 'ON' : 'OFF'}</Text>
+            <Text style={styles.settingsButtonName as TextStyle}>CLICK</Text>
+            <Text style={styles.settingsButtonValue as TextStyle}>
+              {isClickEnabled ? 'ON' : 'OFF'}
+            </Text>
           </Pressable>
         </View>
         <Pressable 
-          style={[styles.editButton, isEditPopupVisible && styles.editButtonActive]}
+          style={[styles.editButton as ViewStyle, isEditPopupVisible && (styles.editButtonActive as ViewStyle)]}
           onPress={() => setIsEditPopupVisible(!isEditPopupVisible)}
         >
-          <Text style={styles.editButtonText}>EDIT</Text>
+          <Text style={styles.editButtonText as TextStyle}>EDIT</Text>
         </Pressable>
         <Pressable 
-          style={[styles.toggleButton, showGrid && styles.toggleButtonActive]}
+          style={[styles.toggleButton as ViewStyle, showGrid && (styles.toggleButtonActive as ViewStyle)]}
           onPress={handleToggleView}
         >
           <ArrowLeftRight size={20} color={colors.text} style={{ transform: [{ rotate: '0deg' }] }} />
@@ -599,45 +628,9 @@ export default function CordinateScreen() {
     );
   };
 
-  // Toggle between piano and grid
+  // Simplify the toggle function
   const handleToggleView = () => {
-    // Start the flip animation
-    Animated.spring(flipAnimation, {
-      toValue: showGrid ? 0 : 1,
-      friction: 8,
-      tension: 10,
-      useNativeDriver: true,
-    }).start();
-
-    // Update the view state after animation
-    setTimeout(() => {
-      setShowGrid(!showGrid);
-    }, 150);
-  };
-
-  // Calculate transform styles for both views
-  const pianoTransform = {
-    transform: [
-      {
-        rotateY: flipAnimation.interpolate({
-          inputRange: [0, 1],
-          outputRange: ['0deg', '180deg'],
-        }),
-      },
-    ],
-    backfaceVisibility: 'hidden' as const,
-  };
-
-  const gridTransform = {
-    transform: [
-      {
-        rotateY: flipAnimation.interpolate({
-          inputRange: [0, 1],
-          outputRange: ['180deg', '360deg'],
-        }),
-      },
-    ],
-    backfaceVisibility: 'hidden' as const,
+    setShowGrid(!showGrid);
   };
 
   // Update handleSavedChordPress to use global state
@@ -714,72 +707,45 @@ export default function CordinateScreen() {
 
     // Get diatonic chords for the current key and mode
     const diatonicChords = getDiatonicChords(selectedKey, mode);
-    
-    // Filter chords to only include those with the selected note as root
     const chordsWithMatchingRoot = diatonicChords.filter(chord => chord.root === note);
+    
+    // Get available chord types based on the active chord group
+    const getChordTypesForGroup = (group: ChordGroup): ChordType[] => {
+      switch (group) {
+        case 'TRIAD':
+          return ['major', 'minor', 'dim', 'augmented', 'sus2', 'sus4'];
+        case '4 NOTE':
+          return ['7', 'major7', 'minor7', 'm7b5', 'dim7', '6', 'minor6', 'minorMajor7', '7sus4'];
+        case 'HIGHER':
+          return ['9', 'major9', 'minor9', '11', 'major11', 'major13', 'minor13'];
+        case 'RANDOM':
+          return ['major', 'minor', 'dim', 'augmented', 'sus2', 'sus4', '7', 'major7', 'minor7', 'major9', 'minor9'];
+        default:
+          return ['major', 'minor'];
+      }
+    };
 
-    // Only use custom assignments if in CUSTOM mode
-    if (activeChordGroup === 'CUSTOM' && customChordAssignments[note]) {
-      return customChordAssignments[note];
+    const allowedTypes = getChordTypesForGroup(activeChordGroup);
+    
+    // Case-insensitive matching of chord types
+    const matchingChords = chordsWithMatchingRoot.filter(chord => 
+      allowedTypes.some(type => type.toLowerCase() === chord.type.toLowerCase())
+    );
+
+    if (matchingChords.length === 0) {
+      // If no matching chords found, create a basic chord based on the active group
+      const defaultType = allowedTypes[0] || (mode === 'minor' ? 'minor' : 'major');
+      return createChord(note, defaultType);
     }
 
-    if (chordsWithMatchingRoot.length === 0) {
-      // If no matching chords found, create a basic major or minor chord
-      return {
-        id: Date.now().toString(),
-        root: note,
-        type: mode === 'minor' ? 'minor' : 'major',
-        notes: [], // Audio utils will populate this
-        duration: 500
-      };
+    // For RANDOM group, pick a random chord from matching chords
+    if (activeChordGroup === 'RANDOM') {
+      const randomIndex = Math.floor(Math.random() * matchingChords.length);
+      return matchingChords[randomIndex];
     }
 
-    switch (activeChordGroup) {
-      case 'TRIAD':
-        // Strictly only major, minor, or diminished triads from the diatonic scale
-        const triadTypes = ['major', 'minor', 'diminished'];
-        return chordsWithMatchingRoot.find(chord => 
-          triadTypes.includes(chord.type.toLowerCase()) &&
-          !chord.type.includes('7') && 
-          !chord.type.includes('9') && 
-          !chord.type.includes('11') && 
-          !chord.type.includes('13') &&
-          !chord.type.includes('6') &&
-          !chord.type.includes('sus')
-        ) || {
-          id: Date.now().toString(),
-          root: note,
-          type: mode === 'minor' ? 'minor' : 'major',
-          notes: [],
-          duration: 500
-        };
-
-      case '4 NOTE':
-        // Only 7th chords
-        const seventhTypes = ['7', 'maj7', 'min7', 'm7b5', 'dim7'];
-        return chordsWithMatchingRoot.find(chord => 
-          seventhTypes.some(type => chord.type.toLowerCase() === type.toLowerCase())
-        ) || chordsWithMatchingRoot.find(chord => 
-          chord.type.toLowerCase().includes('7')
-        ) || chordsWithMatchingRoot[0];
-
-      case 'HIGHER':
-        // Only extended chords (9th, 11th, 13th)
-        const extendedTypes = ['9', '11', '13'];
-        return chordsWithMatchingRoot.find(chord => 
-          extendedTypes.some(type => chord.type.toLowerCase().endsWith(type))
-        ) || chordsWithMatchingRoot.find(chord => 
-          chord.type.toLowerCase().includes('9') ||
-          chord.type.toLowerCase().includes('11') ||
-          chord.type.toLowerCase().includes('13')
-        ) || chordsWithMatchingRoot[0];
-
-      case 'RANDOM':
-        return chordsWithMatchingRoot[Math.floor(Math.random() * chordsWithMatchingRoot.length)];
-
-      default:
-        return chordsWithMatchingRoot[0];
-    }
+    // Return the chord at the current index, wrapping around if needed
+    return matchingChords[currentChordIndex % matchingChords.length];
   };
 
   // Modify handleChordOptionPress to store last played chord
@@ -818,73 +784,139 @@ export default function CordinateScreen() {
       duration: 500
     };
     
-    setLastPlayedChord(chord);
     setCurrentChord(chord);
     void stopChord();
     void playChord(matchingChord.notes);
   };
 
-  // Add custom chord assignment handlers
-  const handleCustomLongPress = () => {
-    if (activeChordGroup !== 'CUSTOM' || !lastPlayedChord || !selectedNote) return;
-
-    setCustomChordAssignments(prev => ({
-      ...prev,
-      [selectedNote]: lastPlayedChord
-    }));
+  // Update cycleChordGroup to properly handle chord updates
+  const cycleChordGroup = () => {
+    const groups: ChordGroup[] = ['TRIAD', '4 NOTE', 'HIGHER', 'RANDOM'];
+    const currentIndex = groups.indexOf(activeChordGroup);
+    const nextGroup = groups[(currentIndex + 1) % groups.length];
+    setActiveChordGroup(nextGroup);
+    
+    // Update current chord if a note is selected
+    if (selectedNote && isChordinateActive) {
+      const availableChords = getAvailableChords(selectedNote as NoteName, currentMode);
+      if (availableChords.length > 0) {
+        setCurrentChordIndex(0);
+        const matchingChord = getChordForNote(selectedNote as NoteName, currentMode);
+        if (matchingChord) {
+          setCurrentChord(matchingChord);
+          void playChord(matchingChord.notes);
+        }
+      }
+    }
   };
 
-  // Modify handleNoteSelect to use chord groups
+  // Update handleNoteSelect to properly sync chord display and playback
   const handleNoteSelect = (note: string) => {
     setSelectedRootNote(note);
-    const midiNote = 60 + ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-      .indexOf(note);
-
-    if (!isChordinateActive) {
-      // When CHORDINATE is off, only play single notes and stop any playing chords
-      void stopChord();
-      void playChord([midiNote]);
-      return;
-    }
-
-    // Only proceed with chord logic if CHORDINATE is active
-    const chord = getChordForNote(note as NoteName, currentMode);
-    if (chord) {
-      void stopChord();
-      void playChord(chord.notes);
-    }
-  };
-
-  // Add custom button long press handlers
-  const handleCustomButtonPressIn = () => {
-    if (activeChordGroup === 'CUSTOM') {
-      customLongPressRef.current = setTimeout(handleCustomLongPress, 500);
-    }
-  };
-
-  const handleCustomButtonPressOut = () => {
-    if (customLongPressRef.current) {
-      clearTimeout(customLongPressRef.current);
-      customLongPressRef.current = null;
+    setSelectedNote(note);
+    
+    if (note) {
+      const availableChords = getAvailableChords(note as NoteName, currentMode);
+      setAvailableChordOptions(availableChords);
+      
+      // If CHORDINATE is active, get the appropriate chord and update display
+      if (isChordinateActive) {
+        const matchingChord = getChordForNote(note as NoteName, currentMode);
+        if (matchingChord) {
+          setCurrentChord(matchingChord);
+          void playChord(matchingChord.notes);
+          
+          // Update currentChordIndex based on the selected chord
+          const chordIndex = availableChords.findIndex(
+            option => option.type.toLowerCase() === matchingChord.type.toLowerCase()
+          );
+          if (chordIndex !== -1) {
+            setCurrentChordIndex(chordIndex);
+          }
+        }
+      } else {
+        setCurrentChord(null);
+        void stopChord();
+      }
     }
   };
 
+  // Move handleChordScroll inside component
+  const handleChordScroll = (direction: 'up' | 'down') => {
+    if (direction === 'up') {
+      setCurrentChordIndex((prev: number) => (prev + 1) % availableChordOptions.length);
+    } else {
+      setCurrentChordIndex((prev: number) => (prev - 1 + availableChordOptions.length) % availableChordOptions.length);
+    }
+  };
+
+  // Move handleChordinatePress inside component
+  const handleChordinatePress = () => {
+    setIsChordinateActive(!isChordinateActive);
+  };
+
+  // Move renderChordOptions inside component and fix style types
+  const renderChordOptions = () => {
+    if (!isChordOptionsVisible) return null;
+    
+    return (
+      <Pressable 
+        style={styles.editPopupOverlay as ViewStyle}
+        onPress={() => setIsChordOptionsVisible(false)}
+      >
+        <View style={[styles.chordOptionsContainer as ViewStyle, { marginTop: 50 }]}>
+          <View style={styles.chordOptionsGrid as ViewStyle}>
+            {[0, 1, 2].map((row) => (
+              <View key={row} style={styles.chordOptionsRow as ViewStyle}>
+                {[0, 1, 2, 3].map((col) => {
+                  const position = row * 4 + col;
+                  const chord = availableChordOptions[position];
+                  const isEmpty = !chord;
+
+                  return (
+                    <Pressable
+                      key={col}
+                      style={[
+                        styles.chordOptionButton as ViewStyle,
+                        isEmpty && { opacity: 0.3 } as ViewStyle
+                      ]}
+                      onPress={() => !isEmpty && handleChordOptionPress(chord.type)}
+                      disabled={isEmpty}
+                    >
+                      <Text style={[
+                        styles.chordOptionButtonText as TextStyle,
+                        isEmpty && { opacity: 0.3 } as TextStyle
+                      ]}>
+                        {isEmpty ? '—' : chord.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ))}
+          </View>
+        </View>
+      </Pressable>
+    );
+  };
+
+  // Update the plus/minus buttons to handle chord scrolling
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container as ViewStyle}>
       <StatusBar style="light" />
       <NavigationMenu visible={menuVisible} onClose={() => setMenuVisible(false)} currentRoute={pathname} />
-      <Pressable style={styles.eyeButton} onPress={() => setMenuVisible(!menuVisible)}>
+      <Pressable style={styles.eyeButton as ViewStyle} onPress={() => setMenuVisible(!menuVisible)}>
         <Eye color={colors.text} size={24} />
       </Pressable>
 
       {/* Main Content */}
-      <View style={styles.mainContent}>
+      <View style={styles.mainContent as ViewStyle}>
         {/* Left Side Content */}
-        <View style={styles.leftPanel}>
+        <View style={styles.leftPanel as ViewStyle}>
           {renderSettings()}
-          <View style={styles.playButtonContainer}>
+          <View style={styles.playButtonContainer as ViewStyle}>
             <Pressable 
-              style={[styles.playButton, isPlaying && styles.playButtonActive]}
+              style={[styles.playButton as ViewStyle, isPlaying && (styles.playButtonActive as ViewStyle)]}
               onPress={handlePlayPress}
             >
               {isPlaying ? (
@@ -958,9 +990,7 @@ export default function CordinateScreen() {
                 borderWidth: 2
               }
             ]}
-            onPress={() => {
-              setIsChordinateActive(!isChordinateActive);
-            }}
+            onPress={handleChordinatePress}
           >
             <Text style={[
               styles.chordinateText,
@@ -983,10 +1013,9 @@ export default function CordinateScreen() {
         </View>
 
         {/* Right Side Panel */}
-        <View style={styles.rightPanel}>
+        <View style={styles.rightPanel as ViewStyle}>
           {/* Settings and Piano Container */}
-          <View style={styles.settingsAndPianoContainer}>
-            {/* Settings Panel */}
+          <View style={styles.settingsAndPianoContainer as ViewStyle}>
             <SettingsPanel
               mode={currentMode}
               octave={currentOctave}
@@ -997,23 +1026,23 @@ export default function CordinateScreen() {
               onSettingSelect={handleSettingSelect}
             />
             
-            {/* Animated container for piano and grid */}
-            <View style={styles.animatedContainer}>
-              <Animated.View style={[styles.animatedView, pianoTransform, !showGrid && styles.visible]}>
-                <View style={styles.horizontalPianoContainer}>
+            {/* Replace animated container with simple view switch */}
+            <View style={styles.pianoGridContainer as ViewStyle}>
+              {!showGrid ? (
+                <View style={styles.horizontalPianoContainer as ViewStyle}>
                   <RootNotePiano
-                    onNoteSelect={(note) => {
-                      setSelectedRootNote(note);
-                      handleNoteSelect(note);
-                    }}
+                    onNoteSelect={handleNoteSelect}
                     selectedKey={selectedKey}
                     mode={currentMode}
+                    isChordinateActive={isChordinateActive}
+                    selectedSetting={selectedSetting}
+                    activeChordGroup={activeChordGroup}
+                    octave={currentOctave}
+                    inversion={currentInversion}
                   />
                 </View>
-              </Animated.View>
-
-              <Animated.View style={[styles.animatedView, gridTransform, showGrid && styles.visible]}>
-                <View style={styles.gridContainer}>
+              ) : (
+                <View style={styles.gridContainer as ViewStyle}>
                   <View style={styles.gridHeaderContainer}>
                     <SavedChordGrid
                       chords={savedChords.filter((chord): chord is Chord => chord !== null)}
@@ -1048,26 +1077,31 @@ export default function CordinateScreen() {
                     </Pressable>
                   </View>
                 </View>
-              </Animated.View>
+              )}
             </View>
 
             {/* Cordinate Buttons */}
             <View style={styles.cordinateButtonsContainer}>
-              {(['TRIAD', '4 NOTE', 'HIGHER', 'RANDOM', 'CUSTOM'] as const).map((label, index) => (
-                <Pressable
-                  key={index}
-                  style={[
-                    styles.cordinateButton,
-                    selectedButton === index && styles.cordinateButtonActive,
-                    label === activeChordGroup && styles.cordinateButtonSelected
-                  ]}
-                  onPress={() => handleCordinateButtonPress(index)}
-                  onPressIn={() => label === 'CUSTOM' && handleCustomButtonPressIn()}
-                  onPressOut={() => label === 'CUSTOM' && handleCustomButtonPressOut()}
-                >
-                  <Text style={styles.cordinateButtonText}>{label}</Text>
-                </Pressable>
-              ))}
+              <Pressable
+                style={[
+                  styles.cordinateButton,
+                  styles.cordinateButtonSelected
+                ]}
+                onPress={cycleChordGroup}
+              >
+                <Text style={styles.cordinateButtonText}>{activeChordGroup}</Text>
+              </Pressable>
+              <Pressable 
+                style={[
+                  styles.soundWindow,
+                  isSoundWindowSelected && styles.soundWindowSelected
+                ]}
+                onPress={() => {
+                  cycleSound();
+                }}
+              >
+                <Text style={styles.soundText}>{formatInstrumentName(selectedSound).toUpperCase()}</Text>
+              </Pressable>
             </View>
           </View>
 
@@ -1075,16 +1109,26 @@ export default function CordinateScreen() {
           <View style={styles.plusMinusContainer}>
             <Pressable 
               style={styles.plusButton}
-              onPress={() => handleSettingAdjust('up')}
-              onPressIn={() => handlePressIn('up')}
+              onPressIn={() => {
+                if (!selectedSetting && isChordinateActive) {
+                  handleChordScroll('up');
+                } else {
+                  handlePressIn('up');
+                }
+              }}
               onPressOut={handlePressOut}
             >
               <Text style={styles.plusMinusText}>+</Text>
             </Pressable>
             <Pressable 
               style={styles.minusButton}
-              onPress={() => handleSettingAdjust('down')}
-              onPressIn={() => handlePressIn('down')}
+              onPressIn={() => {
+                if (!selectedSetting && isChordinateActive) {
+                  handleChordScroll('down');
+                } else {
+                  handlePressIn('down');
+                }
+              }}
               onPressOut={handlePressOut}
             >
               <Text style={styles.plusMinusText}>-</Text>
@@ -1122,52 +1166,7 @@ export default function CordinateScreen() {
       )}
 
       {/* Chord Options Popup */}
-      {isChordOptionsVisible && (
-        <Pressable 
-          style={styles.editPopupOverlay}
-          onPress={() => setIsChordOptionsVisible(false)}
-        >
-          <View style={[styles.chordOptionsContainer, { marginTop: 50 }]}>
-            <View style={styles.chordOptionsGrid}>
-              {[0, 1, 2].map((row) => (
-                <View key={row} style={styles.chordOptionsRow}>
-                  {[0, 1, 2, 3].map((col) => {
-                    const position = row * 4 + col;
-                    const chord = availableChordOptions[position];
-                    const isEmpty = !chord || !chord.type;
-                    
-                    const buttonStyle = [
-                      styles.chordOptionButton,
-                      !isEmpty && styles.chordOptionButtonActive,
-                      chord?.type.includes('MAJ') && !chord?.type.includes('7') && styles.majorChordButton,
-                      chord?.type.includes('MIN') && styles.minorChordButton,
-                      chord?.type.includes('DIM') && styles.dimChordButton,
-                      (chord?.type === '7' || chord?.type === 'DOM7') && styles.dominantChordButton,
-                      chord?.type.includes('MAJ7') && styles.maj7ChordButton
-                    ];
-                    
-                    return (
-                      <Pressable
-                        key={col}
-                        style={buttonStyle}
-                        onPress={() => !isEmpty && handleChordOptionPress(chord.type)}
-                        disabled={isEmpty}
-                      >
-                        <Text style={[
-                          styles.chordOptionButtonText,
-                          isEmpty && { opacity: 0.3 }
-                        ]}>
-                          {isEmpty ? '—' : chord.label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              ))}
-            </View>
-          </View>
-        </Pressable>
-      )}
+      {renderChordOptions()}
     </SafeAreaView>
   );
 }
@@ -1370,7 +1369,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     backgroundColor: colors.background,
     borderRadius: 8,
-    alignItems: 'center'
+    alignItems: 'center',
+    transform: [{ translateX: 80 }]
   },
   settingsButtonActive: {
     backgroundColor: colors.surfaceLight
@@ -1484,11 +1484,13 @@ const styles = StyleSheet.create({
   },
   cordinateButtonsContainer: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 30,
-    marginLeft: 60,
-    paddingHorizontal: 20
+    justifyContent: 'flex-start',
+    marginTop: 35,
+    marginLeft: 280,
+    paddingHorizontal: 0,
+    position: 'relative',
+    width: '100%',
+    gap: 20
   },
   cordinateButton: {
     width: 68,
@@ -1499,10 +1501,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.3)'
-  },
-  cordinateButtonActive: {
-    borderWidth: 2,
-    borderColor: '#FFFFFF'
   },
   cordinateButtonSelected: {
     borderWidth: 2,
@@ -1557,7 +1555,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.3)',
     marginTop: 7,
-    marginLeft: -5
+    marginLeft: -55
   },
   editButtonActive: {
     backgroundColor: colors.surfaceLight,
@@ -1613,18 +1611,17 @@ const styles = StyleSheet.create({
     borderColor: colors.text,
   },
   pianoGridContainer: {
-    width: '100%',
-    height: 220,
+    width: '110%',
+    height: 180,
     position: 'relative',
-    marginTop: -40,
+    marginTop: 0,
+    marginRight: -20,
   },
-  rightPianoContainer: {
+  horizontalPianoContainer: {
     width: '100%',
     height: '100%',
-    transform: [
-      { translateY: 40 },
-      { translateX: 12 }
-    ]
+    transform: [{ translateX: 20 }],
+    marginBottom: -20
   },
   gridContainer: {
     transform: [
@@ -1641,11 +1638,11 @@ const styles = StyleSheet.create({
   gridHeaderContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     width: '100%',
     gap: 8,
     paddingRight: 10,
-    backgroundColor: 'transparent'
+    backgroundColor: 'transparent',
+    position: 'relative'
   },
   gridPageToggle: {
     width: 43,
@@ -1655,14 +1652,20 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.3)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 64,
-    transform: [{ rotate: '270deg' }],
+    position: 'absolute',
+    right: -150,
+    top: '46%',
+    transform: [
+      { rotate: '270deg' },
+      { translateY: -14.5 }
+    ],
     elevation: 0,
     shadowColor: 'transparent',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0,
     shadowRadius: 0,
-    backgroundColor: 'transparent'
+    backgroundColor: 'transparent',
+    zIndex: 10
   },
   progressionButton: {
     width: 48,
@@ -1700,23 +1703,13 @@ const styles = StyleSheet.create({
     marginTop: -2,
   },
   animatedContainer: {
-    position: 'relative',
-    width: '100%',
-    height: 185,
+    flex: 1,
   },
   animatedView: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    backfaceVisibility: 'hidden',
+    flex: 1,
   },
   visible: {
-    zIndex: 1,
-  },
-  horizontalPianoContainer: {
-    width: '100%',
-    height: '100%',
-    transform: [{ translateX: 15 }]
+    opacity: 1,
   },
   playButtonActive: {
     backgroundColor: colors.buttonActive
@@ -1832,5 +1825,28 @@ const styles = StyleSheet.create({
   },
   min9ChordButton: {
     backgroundColor: colors.buttonGrey
-  }
+  },
+  soundWindow: {
+    width: 132,
+    height: 50,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    transform: [{ translateX: -190 }],
+    position: 'absolute',
+    left: 0,
+  },
+  soundWindowSelected: {
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderWidth: 2,
+  },
+  soundText: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+  },
 });

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { StyleSheet, Text, View, SafeAreaView, Pressable, Platform, Modal } from "react-native";
+import { StyleSheet, Text, View, SafeAreaView, Pressable, Platform, Modal, TouchableOpacity, ViewStyle, TextStyle, StyleProp } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { colors } from "@/constants/colors";
 import { Eye, Play, Square, ChevronLeft, ChevronRight } from "lucide-react-native";
@@ -448,25 +448,45 @@ export default function ProgressionsScreen() {
 
   // Update the step button press handler
   const handleStepPress = (index: number) => {
-    if (selectedChordIndex !== null) {
-      setSelectedChordIndex(index);
+    console.log('Step pressed:', index);
+    console.log('Delete mode:', deleteMode);
+    console.log('Last played chord:', lastPlayedChord);
+
+    if (deleteMode) {
+      console.log('Deleting step');
+      // Clear the step
+      const updatedSteps = [...stepSequencer.steps];
+      updatedSteps[index] = null;
+      setStepSequencer(prev => ({
+        ...prev,
+        steps: updatedSteps
+      }));
       return;
     }
 
-    // Existing step press logic
-    if (activeSavedChordIndex !== null) {
-      const chord = savedChords[activeSavedChordIndex];
-      if (chord) {
-        const updatedSteps = [...stepSequencer.steps];
-        updatedSteps[index] = {
-          ...chord,
-          duration: 200 // Default duration
-        };
-        setStepSequencer(prev => ({
-          ...prev,
-          steps: updatedSteps
-        }));
-      }
+    // If there's a last played chord, save it to this step
+    if (lastPlayedChord) {
+      console.log('Saving last played chord to step:', lastPlayedChord);
+      const updatedSteps = [...stepSequencer.steps];
+      updatedSteps[index] = {
+        ...lastPlayedChord,
+        id: `step-${index}-${Date.now()}`,
+        duration: 200,
+        isOccupied: true,
+        notes: lastPlayedChord.notes || [],
+        root: lastPlayedChord.root,
+        type: lastPlayedChord.type
+      };
+      console.log('Updated step:', updatedSteps[index]);
+      setStepSequencer(prev => ({
+        ...prev,
+        steps: updatedSteps
+      }));
+    } else if (stepSequencer.steps[index]) {
+      console.log('Playing existing step chord');
+      void playChord(stepSequencer.steps[index]!.notes);
+    } else {
+      console.log('No last played chord and no existing chord in step');
     }
   };
 
@@ -869,27 +889,58 @@ export default function ProgressionsScreen() {
     const chord = stepSequencer.steps[index];
     const isActive = currentStep === index;
     const isHighlighted = activeSavedChordIndex !== null && savedChords[activeSavedChordIndex] !== null;
+    
+    const buttonStyle: ViewStyle = {
+      width: 60,
+      height: 60,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: chord ? colors.primary : colors.surface,
+      borderRadius: 8,
+      margin: 4,
+      borderWidth: isHighlighted ? 2 : 0,
+      borderColor: colors.accent,
+      ...(deleteMode && chord ? { backgroundColor: colors.error } : {}),
+    };
 
+    const textStyle: TextStyle = {
+      color: isActive ? colors.textOffWhite : colors.textMuted,
+      fontSize: 16,
+      fontWeight: 'bold',
+    };
+    
     return (
       <Pressable
         key={index}
-        style={[
-          styles.stepButton,
-          chord && styles.stepButtonActive,
-          isHighlighted && styles.stepButtonHighlighted,
-          selectedChordIndex !== null && styles.stepButtonEditMode
-        ]}
-        onPress={() => handleStepPress(index)}
+        style={({ pressed }) => ({
+          ...buttonStyle,
+          opacity: pressed ? 0.7 : 1,
+        })}
+        onPress={() => {
+          console.log('Step pressed:', index);
+          handleStepPress(index);
+        }}
       >
-        <Text style={[
-          styles.stepText,
-          isActive ? styles.stepTextActive : styles.stepTextInactive
-        ]}>
+        <Text style={textStyle}>
           {index + 1}
         </Text>
-        {selectedChordIndex !== null && chord && (
-          <View style={styles.editOverlay}>
-            <Text style={styles.editOverlayText}>E</Text>
+        {deleteMode && chord && (
+          <View style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(255, 0, 0, 0.3)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            borderRadius: 8,
+          }}>
+            <Text style={{
+              color: colors.textOffWhite,
+              fontSize: 24,
+              fontWeight: 'bold',
+            }}>X</Text>
           </View>
         )}
       </Pressable>
@@ -1111,26 +1162,50 @@ export default function ProgressionsScreen() {
       marginBottom: 18,
     },
     stepButton: {
-      width: 36,
-      height: 36,
-      borderRadius: 8,
-      backgroundColor: colors.buttonGrey,
+      width: 60,
+      height: 60,
       justifyContent: 'center',
       alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderRadius: 8,
+      margin: 4,
     },
     stepButtonActive: {
+      backgroundColor: colors.primary,
+    },
+    stepButtonHighlighted: {
       borderWidth: 2,
-      borderColor: colors.primary,
+      borderColor: colors.accent,
+    },
+    stepButtonDeleteMode: {
+      backgroundColor: colors.error,
     },
     stepText: {
-      fontSize: 12,
+      color: colors.textPrimary,
+      fontSize: 16,
       fontWeight: 'bold',
     },
     stepTextActive: {
-      color: '#FFFFFF', // White for current step
+      color: colors.textOffWhite,
     },
     stepTextInactive: {
-      color: 'rgba(255, 255, 255, 0.5)', // Dimmed white for inactive steps
+      color: colors.textMuted,
+    },
+    deleteOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(255, 0, 0, 0.3)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderRadius: 8,
+    },
+    deleteOverlayText: {
+      color: colors.textOffWhite,
+      fontSize: 24,
+      fontWeight: 'bold',
     },
     adjustButtonsContainer: {
       position: 'absolute',
@@ -1391,9 +1466,6 @@ export default function ProgressionsScreen() {
       color: colors.text,
       fontSize: 12,
       fontWeight: 'bold',
-    },
-    stepButtonHighlighted: {
-      borderColor: colors.primary,
     },
     stepButtonCurrent: {
       borderWidth: 2,

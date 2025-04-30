@@ -26,7 +26,7 @@ export const colors = {
   piano: {
     white: '#FFFFFF', // White keys
     black: '#333333', // Black keys
-    highlight: '#BB86FC', // Highlighted keys
+    highlight: '#6A1B9A', // Highlighted keys (dark purple)
   },
   
   // Chord type colors - UPDATED to match the image
